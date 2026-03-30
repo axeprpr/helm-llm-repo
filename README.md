@@ -12,9 +12,7 @@
 |-------|------|---------|--------|------|
 | `vllm-inference` | vLLM | 通用高吞吐推理 | ✅ | ✅ |
 | `sglang-inference` | SGLang | 树结构/RAG/Agent 推理 | ✅ | ✅ |
-| `tgi-inference` | TGI (HuggingFace) | 官方生态、兼容性优先 | ✅ | ✅ |
 | `llamacpp-inference` | llama.cpp | CPU/GPU、GGUF 格式、AMD/Intel | ✅ | ❌ |
-| `ollama-inference` | Ollama | 快速尝鲜、最简部署 | ❌ | ❌ |
 | `embedding-inference` | vLLM | Embedding 生成、Rerank | ✅ | ✅ |
 | `vision-inference` | vLLM | 多模态图片理解 | ✅ | ✅ |
 
@@ -274,7 +272,6 @@ helm install vllm llm-center/vllm-inference \
 | 单副本模型缓存 | ReadWriteOnce | `fast-ssd` / `gp3` / `local-path` |
 | 多副本共享模型 | ReadWriteMany | `nfs` / `cephfs` / `juicefs` |
 | Embedding 模型持久化 | ReadWriteOnce | `fast-ssd` |
-| Ollama 本地模型库 | ReadWriteOnce | `fast-ssd` |
 | GGUF 文件 | ReadWriteOnce | `local-path` (hostPath) |
 
 
@@ -338,14 +335,6 @@ helm install llama70b llm-center/sglang-inference \
   --set resources.limits.nvidia.com/gpu=2 \
   --set engine.tensorParallelSize=2 \
   --set engine.maxModelLen=8192
-
-# TGI + Phi-4（微软小模型，快速测试）
-helm install phi llm-center/tgi-inference \
-  --set model.name=microsoft/Phi-4-mini-instruct \
-  --set resources.limits.nvidia.com/gpu=1
-```
-
----
 
 ## 场景二：单机多卡（Tensor Parallelism）
 
