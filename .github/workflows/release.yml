@@ -37,8 +37,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install chart-testing
-        run: |
-          pip install chart-testing pytest pytest-xdist
+        run: pip install chart-testing
 
       - name: Run chart-testing (lint)
         run: ct lint --all --validate-maintainers=false || true
@@ -47,16 +46,13 @@ jobs:
         run: |
           mkdir -p packages
           for chart in charts/*/; do
-            helm package "$$chart" --destination packages/
+            helm package "${chart}" --destination packages/
           done
           ls packages/
 
-      - name: Generate/update index
+      - name: Generate index
         run: |
-          helm repo add stable https://charts.helm.sh/stable 2>/dev/null || true
-          helm repo update 2>/dev/null || true
-          helm repo index packages --url https://axeprpr.github.io/helm-llm-repo --merge packages/index.yaml 2>/dev/null || \
-            helm repo index packages --url https://axeprpr.github.io/helm-llm-repo
+          helm repo index packages --url https://axeprpr.github.io/helm-llm-repo
           cat packages/index.yaml
 
       - name: Upload artifacts
@@ -67,15 +63,7 @@ jobs:
           retention-days: 30
 
       - name: Validate index
-        run: |
-          python3 -c "
-import yaml
-with open('packages/index.yaml') as f:
-    idx = yaml.safe_load(f)
-    charts = idx.get('entries', {})
-    for name, versions in charts.items():
-        print(f'{name}: {[v[\"version\"] for v in versions]}')
-          "
+        run: python3 scripts/validate-index.py
 
   publish-pages:
     needs: lint-and-package
@@ -105,11 +93,10 @@ with open('packages/index.yaml') as f:
 
       - name: Commit and push
         run: |
-          git checkout --orphan gh-pages
           cp packages/*.tgz ./
           helm repo index . --url https://axeprpr.github.io/helm-llm-repo
           git add *.tgz index.yaml
-          git commit -m "Release: $(date +%Y-%m-%d)"
+          git commit -m "Release charts $(date +%Y-%m-%d)"
           git push -f origin gh-pages
 
       - name: Deploy to GitHub Pages
