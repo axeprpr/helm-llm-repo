@@ -5,12 +5,17 @@ on:
     branches: [main]
     paths:
       - 'charts/**'
+      - '.github/workflows/**'
+      - 'scripts/**'
       - 'Makefile'
   pull_request:
     paths:
       - 'charts/**'
+      - '.github/workflows/**'
+      - 'scripts/**'
   release:
     types: [published]
+  workflow_dispatch:
 
 permissions:
   contents: write
