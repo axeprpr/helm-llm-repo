@@ -2,9 +2,9 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ include "vllm-inference.fullname" . }}
+  name: {{ include "llamacpp-inference.fullname" . }}
   labels:
-    {{- include "vllm-inference.labels" . | nindent 4 }}
+    {{- include "llamacpp-inference.labels" . | nindent 4 }}
   {{- with .Values.ingress.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
@@ -33,22 +33,9 @@ spec:
             pathType: {{ .pathType | default "Prefix" }}
             backend:
               service:
-                name: {{ include "llamacpp-inference.fullname" . }}
+                name: {{ $.Release.Name }}-llamacpp-inference
                 port:
                   number: {{ $.Values.service.port }}
           {{- end }}
     {{- end }}
-{{- end }}
----
-{{- if .Values.serviceAccount.create }}
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: {{ include "vllm-inference.fullname" . }}
-  labels:
-    {{- include "vllm-inference.labels" . | nindent 4 }}
-  {{- with .Values.serviceAccount.annotations }}
-  annotations:
-    {{- toYaml . | nindent 4 }}
-  {{- end }}
 {{- end }}

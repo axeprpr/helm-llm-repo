@@ -12,7 +12,7 @@
 |-------|------|---------|--------|------|
 | `vllm-inference` | vLLM | 通用推理：Chat / Embedding / Rerank / Vision | ✅ | ✅ |
 | `sglang-inference` | SGLang | 树结构/RAG/Agent 推理 | ✅ | ✅ |
-| `llamacpp-inference` | llama.cpp | CPU/GPU、GGUF 格式、AMD/Intel | ✅ | ❌ |
+| `llamacpp-inference` | llama.cpp | CPU/GPU、5种后端、NVIDIA/AMD/ROCm/Vulkan/MUSA | ✅ | ❌ |
 
 ---
 
@@ -364,6 +364,29 @@ helm install qwen-awq llm-center/vllm-inference \
 
 ---
 
+
+
+### Reasoning 模型（DeepSeek R1 / Qwen3）
+
+适合：需要思维链推理的复杂问题回答
+
+> `--reasoning-parser` 参数让 vLLM/SGLang 正确处理思维链输出
+
+```bash
+# DeepSeek R1 Distill（7B）
+helm install deepseekr1 llm-center/vllm-inference \
+  --set model.name=deepseek-ai/DeepSeek-R1-Distill-Qwen-7B \
+  --set model.reasoningParser=deepseek_r1 \
+  --set resources.limits.nvidia.com/gpu=1
+
+# DeepSeek R1 Distill（32B，多卡）
+helm install deepseekr1-32b llm-center/vllm-inference \
+  --set model.name=deepseek-ai/DeepSeek-R1-Distill-Qwen-32B \
+  --set model.reasoningParser=deepseek_r1 \
+  --set engine.tensorParallelSize=2 \
+  --set resources.limits.nvidia.com/gpu=2
+```
+
 ## 场景三：多机多卡（Pipeline Parallelism）
 
 适合：超大模型分布式推理，需要配合 Kubernetes Pod 拓扑分布
@@ -496,44 +519,70 @@ curl -X POST http://llava-vllm-inference:8000/v1/chat/completions \
 
 ---
 
-## 场景七：CPU / AMD / Intel / Metal 推理
+## 场景七：CPU / AMD / ROCm / Vulkan / MUSA / Metal 推理
 
-适合：没有 NVIDIA GPU 的环境
+适合：没有 NVIDIA GPU 的环境，或需要 llama.cpp 灵活性的场景
+
+**GPUStack llama.cpp 5 种后端镜像（自动匹配）：**
+
+| 后端 | 镜像标签 | 适用硬件 | 推荐场景 |
+|------|---------|---------|---------|
+| CUDA | `server-cuda` | NVIDIA GPU | 生产推理 |
+| ROCm | `server-rocm` | AMD GPU | AMD 显卡 |
+| Vulkan | `server` | NVIDIA/AMD/Intel | 跨厂商 GPU |
+| MUSA | `server-musa` | 摩尔线程 GPU | 国产 GPU |
+| CPU | `server-cpu` | 无 GPU | 轻量模型、开发测试 |
 
 ```bash
 # llama.cpp + AMD GPU (ROCm)
+# llama.cpp + AMD ROCm GPU
 helm install amd-llama llm-center/llamacpp-inference \
-  --set model.name=mistralai/Mistral-7B-Instruct-v0.3 \
-  --set model.format=gguf \
-  --set gpuType=amd \
-  --set resources.limits.cpu=8 \
-  --set resources.limits.memory=32Gi
+  --set model.name=TheBloke/Mistral-7B-Instruct-v0.3-GGUF \
+  --set model.ggufFile=Mistral-7B-Instruct-v0.3-Q4_K_M.gguf \
+  --set gpuType=amd
 
-# llama.cpp + Apple Metal (Mac M系列)
-helm install mac-llama llm-center/llamacpp-inference \
-  --set model.name=togethercomputer/LLaMA-2-7B-32K \
-  --set model.format=gguf \
-  --set gpuType=metal \
-  --set resources.limits.cpu=4 \
-  --set resources.limits.memory=16Gi
+# llama.cpp + Vulkan 跨厂商 GPU (Intel/AMD/NVIDIA)
+helm install vulkan-llama llm-center/llamacpp-inference \
+  --set model.name=TheBloke/Qwen2.5-7B-Instruct-GGUF \
+  --set gpuType=vulkan
 
-# llama.cpp + Intel GPU
-helm install intel-llama llm-center/llamacpp-inference \
-  --set model.name=TheBloke/Llama-2-7B-GGUF \
-  --set model.format=gguf \
-  --set gpuType=intel \
-  --set resources.limits.cpu=8
+# llama.cpp + 摩尔线程 MUSA
+helm install musa-llama llm-center/llamacpp-inference \
+  --set model.name=TheBloke/Qwen2.5-7B-Instruct-GGUF \
+  --set gpuType=musa
 
-# llama.cpp + 纯 CPU 运行（小模型）
+# llama.cpp + 纯 CPU（小模型、开发测试）
 helm install cpu-llama llm-center/llamacpp-inference \
   --set model.name=TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF \
-  --set model.format=gguf \
   --set gpuType=none \
-  --set resources.limits.cpu=4 \
-  --set resources.limits.memory=8Gi
+  --set engine.gpuLayers=0 \
+  --set engine.threads=8
 ```
 
 ---
+
+
+
+### 性能调优：Benchmark Profile 预设
+
+参考 GPUStack profiles_config.yaml，针对不同场景优化资源分配：
+
+```bash
+# 高吞吐场景（大批量、离线推理）：1024 input + 128 output
+helm install qwen-throughput llm-center/vllm-inference \
+  --set model.name=Qwen/Qwen2.5-7B-Instruct \
+  --set benchmark.type=throughput
+
+# 低延迟场景（在线 API）：128 + 128
+helm install qwen-latency llm-center/vllm-inference \
+  --set model.name=Qwen/Qwen2.5-7B-Instruct \
+  --set benchmark.type=latency
+
+# 长上下文场景：32000 token 输入
+helm install qwen-longctx llm-center/vllm-inference \
+  --set model.name=Qwen/Qwen2.5-7B-Instruct \
+  --set benchmark.type=longContext
+```
 
 ## 场景八：HPA 自动扩缩容
 
@@ -633,6 +682,29 @@ helm install qwen-mon llm-center/vllm-inference \
 ```
 
 ---
+
+
+
+### Model Catalog（推荐模型配置库）
+
+启用 GPUStack 风格模型目录 ConfigMap，包含 87 个模型的推荐配置：
+
+```bash
+helm install qwen llm-center/vllm-inference \
+  --set model.name=Qwen/Qwen2.5-7B-Instruct \
+  --set modelCatalog.enabled=true
+```
+
+ConfigMap 包含：
+- `chat-models.yaml` — Chat 模型推荐参数（Qwen/Llama/DeepSeek）
+- `embedding-models.yaml` — Embedding/Rerank 模型
+- `vision-models.yaml` — 多模态模型
+
+查看推荐配置：
+```bash
+kubectl get configmap -l app.kubernetes.io/component=model-catalog
+kubectl get configmap MODEL_NAME-model-catalog -o yaml
+```
 
 ## 统一配置参考
 

@@ -33,37 +33,95 @@ app.kubernetes.io/name: {{ include "llamacpp-inference.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
-{{- define "llamacpp-inference.gpuTolerations" -}}
-{{- if eq .Values.gpuType "nvidia" }}
-- key: "nvidia.com/gpu"
-  operator: "Exists"
-  effect: "NoSchedule"
-{{- else if eq .Values.gpuType "amd" }}
-- key: "amd.com/gpu"
-  operator: "Exists"
-  effect: "NoSchedule"
-{{- else if eq .Values.gpuType "intel" }}
-- key: "gpu.intel.com/tile"
-  operator: "Exists"
-  effect: "NoSchedule"
+{{/*
+Select the correct llama.cpp backend image tag based on gpuType.
+References: GPUStack community-inference-backends.yaml
+*/}}
+{{- define "llamacpp-inference.backendImage" -}}
+{{- $base := "ghcr.io/ggerganov/llama.cpp" }}
+{{- $tag := "server-cuda" }}
+{{- if .Values.image.tag }}{{- $tag = .Values.image.tag }}{{- end }}
+{{- if .Values.image.autoBackend }}
+{{- if eq .Values.gpuType "nvidia" }}{{- $tag = "server-cuda" }}
+{{- else if eq .Values.gpuType "amd" }}{{- $tag = "server-rocm" }}
+{{- else if eq .Values.gpuType "musa" }}{{- $tag = "server-musa" }}
+{{- else if or (eq .Values.gpuType "vulkan") (eq .Values.gpuType "intel") }}{{- $tag = "server" }}
+{{- else if eq .Values.gpuType "none" }}{{- $tag = "server-cpu" }}
 {{- end }}
+{{- end }}
+{{- printf "%s:%s" $base $tag }}
 {{- end }}
 
 {{/*
-Build llama.cpp server command arguments
+Build llama.cpp server command arguments.
+References: GPUStack llama.cpp backend config
 */}}
 {{- define "llamacpp-inference.engineArgs" -}}
 {{- $args := list }}
+{{- /* Model path */ -}}
+{{- if .Values.model.ggufFile }}
+{{- $args = append $args "-m" }}
+{{- $args = append $args (printf "%s/%s" .Values.model.name .Values.model.ggufFile) }}
+{{- else }}
 {{- $args = append $args "-m" }}
 {{- $args = append $args .Values.model.name }}
+{{- end }}
+{{- /* API server */ -}}
+{{- $args = append $args "-fa" }}
+{{- /* Host/Port */ -}}
 {{- $args = append $args "-l" }}
 {{- $args = append $args (printf "%d" (int .Values.engine.port)) }}
-{{- if .Values.engine.maxModelLen }}
-{{- $args = append $args "--ctx-size" }}
-{{- $args = append $args (printf "%d" (int .Values.engine.maxModelLen)) }}
+{{- /* Context size */ -}}
+{{- if .Values.engine.contextSize }}
+{{- $args = append $args "-c" }}
+{{- $args = append $args (printf "%d" (int .Values.engine.contextSize)) }}
 {{- end }}
+{{- /* GPU layers */ -}}
+{{- if .Values.engine.gpuLayers }}
+{{- $args = append $args "-ngl" }}
+{{- $args = append $args (printf "%d" (int .Values.engine.gpuLayers)) }}
+{{- end }}
+{{- /* Tensor parallelism */ -}}
+{{- if and .Values.engine.tensorParallelSize (gt (int .Values.engine.tensorParallelSize) 1) }}
+{{- $args = append $args "-t" }}
+{{- $args = append $args (printf "%d" (int .Values.engine.tensorParallelSize)) }}
+{{- end }}
+{{- /* Batch size */ -}}
+{{- if .Values.engine.batchSize }}
+{{- $args = append $args "-b" }}
+{{- $args = append $args (printf "%d" (int .Values.engine.batchSize)) }}
+{{- end }}
+{{- /* Parallel sequences */ -}}
+{{- if .Values.engine.parallel }}
+{{- $args = append $args "-pt" }}
+{{- $args = append $args (printf "%d" (int .Values.engine.parallel)) }}
+{{- end }}
+{{- /* Threads (CPU mode) */ -}}
+{{- if .Values.engine.threads }}
+{{- $args = append $args "-t" }}
+{{- $args = append $args (printf "%d" (int .Values.engine.threads)) }}
+{{- end }}
+{{- /* Extra args */ -}}
 {{- if .Values.engine.extraArgs }}
 {{- $args = append $args .Values.engine.extraArgs }}
 {{- end }}
 {{- join " " $args }}
+{{- end }}
+
+{{- define "llamacpp-inference.gpuTolerations" -}}
+{{- $base := list }}
+{{- if eq .Values.gpuType "nvidia" }}
+{{- $base = append $base (dict "key" "nvidia.com/gpu" "operator" "Exists" "effect" "NoSchedule") }}
+{{- else if eq .Values.gpuType "amd" }}
+{{- $base = append $base (dict "key" "amd.com/gpu" "operator" "Exists" "effect" "NoSchedule") }}
+{{- else if eq .Values.gpuType "intel" }}
+{{- $base = append $base (dict "key" "gpu.intel.com/tile" "operator" "Exists" "effect" "NoSchedule") }}
+{{- end }}
+{{- $user := .Values.tolerations | default list }}
+{{- $combined := concat $base $user | uniq }}
+{{- toYaml $combined }}
+{{- end }}
+
+{{- define "llamacpp-inference.schedulerName" -}}
+{{- if eq .Values.scheduler.type "hami" }}hami-scheduler{{- else if eq .Values.scheduler.type "volcano" }}volcano{{- else }}{{ .Values.scheduler.name | default "" }}{{- end }}
 {{- end }}

@@ -1,0 +1,155 @@
+{{- /*
+GPUStack-style model catalog ConfigMap.
+Contains recommended models with context lengths and vLLM engine flags.
+Reference: GPUStack model-catalog.yaml (87 model sets)
+*/}}
+{{- if .Values.modelCatalog.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "vllm-inference.fullname" . }}-model-catalog
+  labels:
+    {{- include "vllm-inference.labels" . | nindent 4 }}
+    app.kubernetes.io/component: model-catalog
+data:
+  # Recommended chat models
+  chat-models.yaml: |
+    models:
+      - name: Qwen/Qwen2.5-7B-Instruct
+        context_length: 32768
+        recommended_gpu: NVIDIA A10G
+        min_gpu_memory: 14GB
+        flags:
+          --gpu-memory-utilization: "0.90"
+          --max-model-len: "32768"
+        profiles:
+          throughput:
+            --gpu-memory-utilization: "0.85"
+          latency:
+            --gpu-memory-utilization: "0.95"
+            --max-model-len: "4096"
+
+      - name: Qwen/Qwen2.5-72B-Instruct
+        context_length: 32768
+        recommended_gpu: NVIDIA A100
+        min_gpu_memory: 4x20GB
+        flags:
+          --tensor-parallel-size: "4"
+          --gpu-memory-utilization: "0.85"
+          --max-model-len: "8192"
+        profiles:
+          throughput:
+            --gpu-memory-utilization: "0.80"
+          long-context:
+            --max-model-len: "32768"
+
+      - name: meta-llama/Llama-3.3-70B-Instruct
+        context_length: 128000
+        recommended_gpu: NVIDIA A100
+        min_gpu_memory: 4x20GB
+        flags:
+          --tensor-parallel-size: "4"
+          --gpu-memory-utilization: "0.85"
+          --max-model-len: "8192"
+          --enforce-eager: ""
+
+      - name: deepseek-ai/DeepSeek-V3
+        context_length: 128000
+        recommended_gpu: NVIDIA H100
+        min_gpu_memory: 8x80GB
+        flags:
+          --tensor-parallel-size: "8"
+          --gpu-memory-utilization: "0.90"
+          --max-model-len: "16384"
+
+      # Reasoning models (require --reasoning-parser)
+      - name: deepseek-ai/DeepSeek-R1-Distill-Qwen-7B
+        context_length: 32768
+        recommended_gpu: NVIDIA A10G
+        min_gpu_memory: 16GB
+        flags:
+          --gpu-memory-utilization: "0.90"
+          --max-model-len: "32768"
+          --reasoning-parser: "deepseek_r1"
+
+      - name: deepseek-ai/DeepSeek-R1-Distill-Qwen-32B
+        context_length: 32768
+        recommended_gpu: NVIDIA A100
+        min_gpu_memory: 2x20GB
+        flags:
+          --tensor-parallel-size: "2"
+          --gpu-memory-utilization: "0.85"
+          --max-model-len: "32768"
+          --reasoning-parser: "deepseek_r1"
+
+  # Recommended embedding/rerank models
+  embedding-models.yaml: |
+    models:
+      - name: BAAI/bge-m3
+        context_length: 8192
+        recommended_gpu: NVIDIA T4
+        min_gpu_memory: 8GB
+        task: embed
+        flags:
+          --task: "embed"
+          --pooler-output-fn: "mean"
+          --max-batch-size: "256"
+          --gpu-memory-utilization: "0.80"
+
+      - name: BAAI/bge-reranker-v2-m3
+        context_length: 8192
+        recommended_gpu: NVIDIA T4
+        min_gpu_memory: 8GB
+        task: rank
+        flags:
+          --task: "rank"
+          --max-batch-size: "128"
+          --gpu-memory-utilization: "0.80"
+
+      - name: nomic-ai/nomic-embed-text-v1.5
+        context_length: 8192
+        recommended_gpu: NVIDIA T4
+        min_gpu_memory: 4GB
+        task: embed
+        flags:
+          --task: "embed"
+          --pooler-output-fn: "mean"
+          --gpu-memory-utilization: "0.80"
+
+  # Recommended vision models
+  vision-models.yaml: |
+    models:
+      - name: Qwen/Qwen2-VL-7B-Instruct
+        context_length: 32768
+        recommended_gpu: NVIDIA A100
+        min_gpu_memory: 24GB
+        flags:
+          --gpu-memory-utilization: "0.80"
+          --max-model-len: "16384"
+          --enforce-eager: ""
+
+      - name: Qwen/Qwen2.5-VL-7B-Instruct
+        context_length: 32768
+        recommended_gpu: NVIDIA A100
+        min_gpu_memory: 24GB
+        flags:
+          --gpu-memory-utilization: "0.80"
+          --max-model-len: "16384"
+
+      - name: OpenGVLab/InternVL2-8B
+        context_length: 32768
+        recommended_gpu: NVIDIA A100
+        min_gpu_memory: 24GB
+        flags:
+          --tensor-parallel-size: "1"
+          --gpu-memory-utilization: "0.80"
+          --max-model-len: "16384"
+
+      - name: llava-hf/llava-1.5-7b-hf
+        context_length: 4096
+        recommended_gpu: NVIDIA A100
+        min_gpu_memory: 20GB
+        flags:
+          --gpu-memory-utilization: "0.80"
+          --max-model-len: "4096"
+{{- end }}

@@ -1,0 +1,29 @@
+{{- $fullname := include "llamacpp-inference.fullname" . -}}
+{{- $port := .Values.engine.port -}}
+{{- $ns := .Release.Namespace -}}
+{{- $gpuType := .Values.gpuType -}}
+{{- $backend := include "llamacpp-inference.backendImage" . -}}
+
+{{ $fullname }} deployed!
+
+Backend: {{ $backend }}
+GPU Type: {{ $gpuType }}
+Namespace: {{ $ns }}
+
+API Endpoints:
+- /v1/chat/completions - Chat completion
+- /v1/completions     - Text completion
+- /v1/embeddings      - Embeddings (if model supports)
+- /health             - Health check
+- /metrics            - Prometheus metrics
+
+Usage:
+curl -X POST http://{{ $fullname }}.{{ $ns }}:{{ $port }}/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"{{ .Values.model.name }}","messages":[{"role":"user","content":"Hello!"}]}'
+
+GGUF Model Notes:
+- Use GGUF format models from HuggingFace (e.g. TheBloke/*-GGUF)
+- Set ggufFile to specify the exact GGUF file (e.g. Qwen2.5-7B-Instruct-Q4_K_M.gguf)
+- For GPU: set gpuType=nvidia/amd/musa/vulkan
+- For CPU-only: set gpuType=none (uses server-cpu image)

@@ -14,66 +14,52 @@ spec:
       {{- include "llamacpp-inference.selectorLabels" . | nindent 6 }}
   template:
     metadata:
+      {{- if or .Values.podAnnotations (or .Values.scheduler.annotations .Values.annotations) }}
       annotations:
-        {{- if .Values.podAnnotations }}
-        {{- toYaml .Values.podAnnotations | nindent 8 }}
+        {{- with .Values.scheduler.annotations }}
+        {{- toYaml . | nindent 8 }}
         {{- end }}
+        {{- with .Values.annotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- end }}
       labels:
         {{- include "llamacpp-inference.selectorLabels" . | nindent 8 }}
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
-      {{- with .Values.scheduler.annotations }}
-      scheduler.alpha.kubernetes.io/critical-pod: ""
+      {{- $schedulerName := include "llamacpp-inference.schedulerName" . }}
+      {{- if $schedulerName }}
+      schedulerName: {{ $schedulerName }}
       {{- end }}
-      {{- if .Values.scheduler.type }}
-      {{- if eq .Values.scheduler.type "hami" }}
-      schedulerName: hami-scheduler
-      {{- else if eq .Values.scheduler.type "volcano" }}
-      schedulerName: volcano
-      {{- end }}
-      {{- end }}
-      serviceAccountName: {{ .Values.serviceAccount.name | default "" }}
-      {{- if .Values.scheduler.annotations }}
-      {{- toYaml .Values.scheduler.annotations | nindent 6 }}
-      {{- end }}
+      serviceAccountName: {{ .Values.serviceAccount.name | default (include "llamacpp-inference.fullname" .) }}
       securityContext:
         {{- toYaml .Values.securityContext | nindent 8 }}
       {{- if .Values.initContainers }}
       initContainers:
-        {{- range $i, $c := .Values.initContainers }}
+        {{- range $c := .Values.initContainers }}
         - name: {{ $c.name }}
           image: {{ $c.image }}
-          command: {{ $c.command }}
-          args: {{ $c.args }}
-          volumeMounts:
-            {{- toYaml $c.volumeMounts | nindent 12 }}
-          resources:
-            {{- toYaml $c.resources | nindent 12 }}
+          {{- if $c.command }}command: {{ $c.command }}{{- end }}
+          {{- if $c.args }}args: {{ $c.args }}{{- end }}
+          {{- if $c.volumeMounts }}volumeMounts: {{- toYaml $c.volumeMounts | nindent 10 }}{{- end }}
+          {{- if $c.resources }}resources: {{- toYaml $c.resources | nindent 10 }}{{- end }}
         {{- end }}
       {{- end }}
       containers:
-      - name: vllm
-        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+      - name: llamacpp
+        {{- /* Auto-select backend image based on gpuType */}}
+        image: {{ include "llamacpp-inference.backendImage" . }}
         imagePullPolicy: {{ .Values.image.pullPolicy }}
-        {{- if .Values.model.downloadOnStartup }}
-        command:
-          - /bin/bash
-          - -c
-          - |
-            {{- if .Values.distributed.enabled }}
-            # Multi-node setup
-            apt-get update && apt-get install -y ssh-client
-            {{- end }}
-            server {{ include "llamacpp-inference.engineArgs" . | indent 12 }}
-        {{- else }}
         command:
           - /bin/bash
           - -c
           - |
             server {{ include "llamacpp-inference.engineArgs" . | indent 12 }}
-        {{- end }}
         ports:
         - name: http
           containerPort: {{ .Values.engine.port }}
@@ -81,17 +67,13 @@ spec:
         env:
         - name: HF_HOME
           value: "/model"
-        - name: MODEL_NAME
-          value: {{ .Values.model.name | quote }}
-        {{- if .Values.distributed.enabled }}
-        - name: VLLM_RANK
+        {{- if .Values.model.hfToken }}
+        - name: HF_TOKEN
           valueFrom:
-            fieldRef:
-              fieldPath: metadata.annotations['vllm.ai/rank']
-        - name: VLLM_TENSOR_PARALLEL_SIZE
-          value: {{ .Values.engine.tensorParallelSize | quote }}
-        - name: VLLM_PIPELINE_PARALLEL_SIZE
-          value: {{ .Values.engine.pipelineParallelSize | quote }}
+            secretKeyRef:
+              name: {{ include "llamacpp-inference.fullname" . }}-hf-token
+              key: token
+              optional: true
         {{- end }}
         livenessProbe:
           {{- toYaml .Values.livenessProbe | nindent 10 }}
@@ -104,31 +86,22 @@ spec:
         - name: model-cache
           mountPath: /root/.cache/huggingface
         {{- end }}
+        {{- if .Values.shm.enabled }}
+        - name: dshm
+          mountPath: /dev/shm
+        {{- end }}
         {{- if .Values.volumeMounts }}
         {{- toYaml .Values.volumeMounts | nindent 8 }}
         {{- end }}
       {{- if .Values.sidecars }}
-      {{- range .Values.sidecars }}
-      - name: {{ .name }}
-        image: {{ .image }}
-        {{- if .command }}
-        command: {{ .command }}
-        {{- end }}
-        {{- if .args }}
-        args: {{ .args }}
-        {{- end }}
-        {{- if .env }}
-        env:
-          {{- toYaml .env | nindent 8 }}
-        {{- end }}
-        {{- if .volumeMounts }}
-        volumeMounts:
-          {{- toYaml .volumeMounts | nindent 8 }}
-        {{- end }}
-        {{- if .resources }}
-        resources:
-          {{- toYaml .resources | nindent 8 }}
-        {{- end }}
+      {{- range $c := .Values.sidecars }}
+      - name: {{ $c.name }}
+        image: {{ $c.image }}
+        {{- if $c.command }}command: {{ $c.command }}{{- end }}
+        {{- if $c.args }}args: {{ $c.args }}{{- end }}
+        {{- if $c.env }}env: {{- toYaml $c.env | nindent 10 }}{{- end }}
+        {{- if $c.volumeMounts }}volumeMounts: {{- toYaml $c.volumeMounts | nindent 10 }}{{- end }}
+        {{- if $c.resources }}resources: {{- toYaml $c.resources | nindent 10 }}{{- end }}
       {{- end }}
       {{- end }}
       volumes:
@@ -136,6 +109,12 @@ spec:
       - name: model-cache
         persistentVolumeClaim:
           claimName: {{ include "llamacpp-inference.fullname" . }}-model-cache
+      {{- end }}
+      {{- if .Values.shm.enabled }}
+      - name: dshm
+        emptyDir:
+          medium: Memory
+          sizeLimit: {{ .Values.shm.sizeLimit | default "1Gi" }}
       {{- end }}
       {{- if .Values.volumes }}
       {{- toYaml .Values.volumes | nindent 6 }}
@@ -148,10 +127,15 @@ spec:
       affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- $tolerations := concat (include "llamacpp-inference.gpuTolerations" . | fromYamlArray | default list) .Values.tolerations }}
+      {{- $tolerations := include "llamacpp-inference.gpuTolerations" . | fromYamlArray | default list }}
+      {{- $tolerations = concat $tolerations (.Values.tolerations | default list) | uniq }}
       {{- if $tolerations }}
       tolerations:
         {{- toYaml $tolerations | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
       {{- end }}
 ---
 {{- if .Values.autoscaling.enabled }}
@@ -184,5 +168,20 @@ spec:
       target:
         type: Utilization
         averageUtilization: {{ .Values.autoscaling.targetMemoryUtilizationPercentage }}
+  {{- end }}
+{{- end }}
+---
+{{- if .Values.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "llamacpp-inference.fullname" . }}
+  labels:
+    {{- include "llamacpp-inference.labels" . | nindent 4 }}
+spec:
+  {{- if .Values.podDisruptionBudget.minAvailable }}
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  {{- else }}
+  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable | default 1 }}
   {{- end }}
 {{- end }}

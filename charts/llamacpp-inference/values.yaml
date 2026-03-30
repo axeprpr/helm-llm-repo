@@ -1,69 +1,135 @@
-# Default values for vllm-inference chart
+# Default values for llamacpp-inference chart
 
 replicaCount: 1
 
+# llama.cpp backend image selection
+# GPUStack provides 5 separate builds: CUDA, ROCm, Vulkan, MUSA, CPU
+# Choose the appropriate image for your hardware:
+#
+# Image variants available:
+#   ghcr.io/ggerganov/llama.cpp:server-cuda   - NVIDIA CUDA (GPU)
+#   ghcr.io/ggerganov/llama.cpp:server-rocm   - AMD ROCm (GPU)
+#   ghcr.io/ggerganov/llama.cpp:server        - Vulkan (cross-vendor GPU)
+#   ghcr.io/ggerganov/llama.cpp:server-musa   - Moore Threads MUSA (GPU)
+#   ghcr.io/ggerganov/llama.cpp:server-cpu    - CPU only
 image:
+  # Auto-selects based on gpuType below. Supported values:
+  # nvidia  → ghcr.io/ggerganov/llama.cpp:server-cuda
+  # amd     → ghcr.io/ggerganov/llama.cpp:server-rocm
+  # vulkan  → ghcr.io/ggerganov/llama.cpp:server
+  # musa    → ghcr.io/ggerganov/llama.cpp:server-musa
+  # none    → ghcr.io/ggerganov/llama.cpp:server-cpu
+  autoBackend: true
   repository: ghcr.io/ggerganov/llama.cpp
   pullPolicy: IfNotPresent
-  tag: "b8580"
+  tag: "server-cuda"  # autoBackend=true overrides this
+
+# GPU hardware type - determines which backend image is used
+# nvidia  → CUDA build (NVIDIA GPU)
+# amd     → ROCm build (AMD GPU)
+# vulkan  → Vulkan build (NVIDIA/AMD/Intel cross-vendor GPU)
+# musa    → MUSA build (Moore Threads GPU)
+# intel   → Vulkan build (Intel GPU via Vulkan)
+# none    → CPU build (no GPU, pure CPU inference)
+gpuType: nvidia
 
 # Model configuration
 model:
-  # HuggingFace model ID or local path
-  name: "Qwen/Qwen2.5-7B-Instruct"
-  # Model format: auto, fp8, fp16, bf16, int8, awq, gptq
-  format: auto
+  # HuggingFace model ID or local path (GGUF format required)
+  # Recommended: TheBloke/*-GGUF, or your fine-tuned GGUF
+  name: "TheBloke/Qwen2.5-7B-Instruct-GGUF"
+  # GGUF model file name within the repo (leave empty for default)
+  ggufFile: ""
   # Download on startup (requires internet)
   downloadOnStartup: true
-  # HF token for gated models
+  # HuggingFace token for gated models
   hfToken: ""
 
-# Engine configuration
+# Engine configuration (llama.cpp server flags)
 engine:
   # Port for OpenAI-compatible API
   port: 8000
-  # Extra engine arguments
-  extraArgs: ""
-  # Max model length
-  maxModelLen: 8192
-  # Tensor parallelism (for multi-GPU)
+  # Context window size (number of tokens)
+  contextSize: 8192
+  # Maximum number of tokens to generate
+  maxTokens: 2048
+  # GPU layers to offload (-1 = all, 0 = CPU only)
+  gpuLayers: -1
+  # Tensor parallelism (for multi-GPU GGUF)
   tensorParallelSize: 1
-  # Pipeline parallelism (for multi-node)
-  pipelineParallelSize: 1
   # GPU memory fraction per GPU (0.0-1.0)
   gpuMemoryUtilization: 0.90
-  # Enable prefix caching
-  enablePrefixCaching: false
-  # Enable chunked prefill
-  enableChunkedPrell: false
+  # Number of parallel sequences to generate
+  parallel: 4
+  # Batch size for prompt processing
+  batchSize: 512
+  # Threads for CPU computation (0 = auto)
+  threads: 0
+  # Extra server arguments
+  extraArgs: ""
 
 # Multi-node / distributed inference
 distributed:
   enabled: false
-  # Init container image for NCCL setup
   initImage: "nccl:latest"
-  # Node list for multi-node (comma-separated hostnames)
   nodeList: []
-  # Master address (usually first node)
   masterAddr: ""
-  # Master port
   masterPort: 29500
 
 # Scheduler type
 scheduler:
-  # native, hami (Xiaohongshu), volcano (Huawei)
   type: native
-  # Scheduler-specific annotations
+  name: ""
   annotations: {}
+  volcano:
+    queueName: ""
+    groupMinMember: 0
+    createPodGroup: false
+    minResources: {}
+  hami:
+    nodeSchedulerPolicy: ""
+    gpuSchedulerPolicy: ""
+    deviceMemoryFraction: ""
 
-# GPU hardware type
-gpuType: nvidia
-# Supported: nvidia, ascend, amd, intel, metal
-
-# Resource limits
+# GPU hardware-specific resource overrides
+# CPU mode (gpuType=none): no GPU, pure CPU
 resources:
+  # NVIDIA/AMD GPU mode
+  nvidia:
+    limits:
+      nvidia.com/gpu: "1"
+      memory: "16Gi"
+      cpu: "4"
+    requests:
+      cpu: "2"
+      memory: "8Gi"
+  # AMD ROCm mode
+  amd:
+    limits:
+      amd.com/gpu: "1"
+      memory: "16Gi"
+      cpu: "4"
+    requests:
+      cpu: "2"
+      memory: "8Gi"
+  # Vulkan / Intel / MUSA mode
+  vulkan:
+    limits:
+      memory: "12Gi"
+      cpu: "4"
+    requests:
+      cpu: "2"
+      memory: "4Gi"
+  # CPU-only mode
+  none:
+    limits:
+      cpu: "8"
+      memory: "32Gi"
+    requests:
+      cpu: "4"
+      memory: "16Gi"
+  # Active limits (derived from gpuType above)
   limits:
-    nvidia.com/gpu: "1"
     memory: "16Gi"
     cpu: "4"
   requests:
@@ -92,13 +158,13 @@ service:
   port: 8000
   annotations: {}
 
-# Ingress configuration
+# Ingress
 ingress:
   enabled: false
   className: ""
   annotations: {}
   hosts:
-    - host: vllm.local
+    - host: llamacpp.local
       paths:
         - path: /
           pathType: Prefix
@@ -109,13 +175,13 @@ livenessProbe:
   httpGet:
     path: /health
     port: 8000
-  initialDelaySeconds: 30
+  initialDelaySeconds: 15
   periodSeconds: 10
 readinessProbe:
   httpGet:
     path: /health
     port: 8000
-  initialDelaySeconds: 10
+  initialDelaySeconds: 5
   periodSeconds: 5
 
 # Autoscaling
@@ -126,7 +192,7 @@ autoscaling:
   targetCPUUtilizationPercentage: 80
   targetMemoryUtilizationPercentage: 80
 
-# /dev/shm for NCCL shared memory
+# /dev/shm for NCCL
 shm:
   enabled: false
   sizeLimit: 1Gi
@@ -148,7 +214,7 @@ podDisruptionBudget:
 podAnnotations: {}
 podLabels: {}
 
-# Runtime class
+# Runtime / priority
 runtimeClassName: ""
 priorityClassName: ""
 terminationGracePeriodSeconds: 60
@@ -160,10 +226,8 @@ securityContext:
   runAsGroup: 0
   fsGroup: 0
 
-# Init containers (e.g., model downloader)
+# Init / sidecar containers
 initContainers: []
-
-# Sidecar containers
 sidecars: []
 
 # Service account
@@ -172,6 +236,6 @@ serviceAccount:
   name: ""
   annotations: {}
 
-# Volumes and volume mounts
+# Volumes
 volumes: []
 volumeMounts: []

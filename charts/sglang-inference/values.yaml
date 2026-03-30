@@ -17,6 +17,8 @@ model:
   downloadOnStartup: true
   # HF token for gated models
   hfToken: ""
+  # Reasoning parser for reasoning models (auto, deepseek_r1, qwen3)
+  reasoningParser: ""
 
 # Engine configuration
 engine:
@@ -24,6 +26,9 @@ engine:
   port: 8000
   # Extra engine arguments
   extraArgs: ""
+  # Benchmark profile presets (GPUStack profiles_config.yaml)
+  # Options: throughput (1024+128), latency (128+128), long-context (32000)
+  benchmarkProfile: ""
   # Max model length
   maxModelLen: 8192
   # Tensor parallelism (for multi-GPU)

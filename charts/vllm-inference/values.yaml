@@ -175,6 +175,13 @@ podDisruptionBudget:
   minAvailable: ""
   maxUnavailable: 1
 
+# GPUStack-style model catalog ConfigMap (recommended models + flags)
+# Reference: GPUStack model-catalog.yaml (87 model sets)
+modelCatalog:
+  enabled: false
+  # Includes: chat-models.yaml, embedding-models.yaml, vision-models.yaml
+  # Use: kubectl get configmap -l app.kubernetes.io/component=model-catalog
+
 # Prometheus Operator integration
 metrics:
   enabled: true
