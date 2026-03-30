@@ -19,6 +19,7 @@ permissions:
 
 jobs:
   release:
+    if: github.ref_name == 'main' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
 
     steps:
