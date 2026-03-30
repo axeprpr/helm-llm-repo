@@ -8,11 +8,6 @@ on:
       - '.github/workflows/**'
       - 'scripts/**'
       - 'Makefile'
-  pull_request:
-    paths:
-      - 'charts/**'
-      - '.github/workflows/**'
-      - 'scripts/**'
   release:
     types: [published]
   workflow_dispatch:
@@ -25,10 +20,6 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
-    if: github.ref_name == 'main' || github.event_name == 'release' || github.event_name == 'workflow_dispatch'
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
@@ -72,8 +63,6 @@ jobs:
           python3 scripts/validate-index.py
           helm repo index _site --url https://axeprpr.github.io/helm-llm-repo --merge _site/index.yaml 2>/dev/null || \
             helm repo index _site --url https://axeprpr.github.io/helm-llm-repo
-          echo "--- INDEX ---"
-          cat _site/index.yaml
 
       - name: Deploy to GitHub Pages
         run: |
