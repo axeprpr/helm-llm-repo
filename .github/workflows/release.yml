@@ -41,11 +41,11 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install chart-testing
-        run: pip install chart-testing
-
-      - name: Run chart-testing (lint)
-        run: ct lint --all --validate-maintainers=false || true
+      - name: Helm lint
+        run: |
+          for chart in charts/*/; do
+            helm lint "${chart}" || true
+          done
 
       - name: Package charts
         run: |
