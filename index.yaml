@@ -3,9 +3,9 @@ entries:
   embedding-inference:
   - apiVersion: v2
     appVersion: 0.4.0
-    created: "2026-03-30T04:14:03.148638205Z"
+    created: "2026-03-30T04:25:24.025348737Z"
     description: High-throughput embedding and rerank inference with vLLM
-    digest: 706ad94d7930da645b701be07161129737cd0e429c4828bd6320f144fce86a10
+    digest: 68cf737290599b0bd6a80c9ce054b7ef96b92ad0cdb2575862dd4226f87c3306
     home: https://github.com/axeprpr/helm-llm-repo
     keywords:
     - embedding
@@ -29,9 +29,9 @@ entries:
   llamacpp-inference:
   - apiVersion: v2
     appVersion: latest
-    created: "2026-03-30T04:14:03.149181116Z"
+    created: "2026-03-30T04:25:24.025878071Z"
     description: llama.cpp high-throughput LLM inference engine Helm chart
-    digest: 3d9cf423ada31f494793bf6f22217c7dba1e5334e8988685c3eb77b7f169080b
+    digest: eb47e4abcff669a3e79edc04bb627548695f90f3621f2b4a2927bd9108b830e1
     home: https://github.com/axeprpr/helm-llm-repo
     keywords:
     - llm
@@ -54,9 +54,9 @@ entries:
   ollama-inference:
   - apiVersion: v2
     appVersion: latest
-    created: "2026-03-30T04:14:03.149659518Z"
+    created: "2026-03-30T04:25:24.026426181Z"
     description: Ollama high-throughput LLM inference engine Helm chart
-    digest: 1203b18147f7bafb4749d24e6e7fbd79f2d6d28c0f6b2e80db8ee489e043ad17
+    digest: b2a59acc52f4172b91114fe6b59364691d572b8d596946feab225b0ddfba0c02
     home: https://github.com/axeprpr/helm-llm-repo
     keywords:
     - llm
@@ -79,9 +79,9 @@ entries:
   sglang-inference:
   - apiVersion: v2
     appVersion: latest
-    created: "2026-03-30T04:14:03.150170175Z"
+    created: "2026-03-30T04:25:24.026918687Z"
     description: SGLang high-throughput LLM inference engine Helm chart
-    digest: 9effbde0dde757999c2e019cbacd354ed7fa6c1d038053b22dc26b6bc4d14dee
+    digest: bd6fd087ca38605a8b1843bab1ccf5df3cf28e66d4d2391b1ae95d1d3ccf8e51
     home: https://github.com/axeprpr/helm-llm-repo
     keywords:
     - llm
@@ -104,9 +104,9 @@ entries:
   tgi-inference:
   - apiVersion: v2
     appVersion: "2.0"
-    created: "2026-03-30T04:14:03.150647545Z"
+    created: "2026-03-30T04:25:24.027460866Z"
     description: TGI high-throughput LLM inference engine Helm chart
-    digest: a9547e85e364e6036104d28a6baf7bfea0e5f6452ef68e9853d67eac8723ad74
+    digest: abb6d990e7dd201cb137ae413d58302c03e9f4fb7e1b85d4bca9cf60a91607c2
     home: https://github.com/axeprpr/helm-llm-repo
     keywords:
     - llm
@@ -129,10 +129,10 @@ entries:
   vision-inference:
   - apiVersion: v2
     appVersion: 0.6.0
-    created: "2026-03-30T04:14:03.151875354Z"
+    created: "2026-03-30T04:25:24.027926151Z"
     description: Vision multimodal LLM inference with vLLM (LLaVA, Qwen-VL, InternVL,
       etc.)
-    digest: 9f00089fe54de2f32d23a0ac1d04026ea731140ce9f6537bca0cdaca2658cb78
+    digest: 535feae924d531f454c7cb33f03098976b973c735029519ac632f0cac1b36929
     home: https://github.com/axeprpr/helm-llm-repo
     keywords:
     - vision
@@ -157,9 +157,9 @@ entries:
   vllm-inference:
   - apiVersion: v2
     appVersion: 0.4.0
-    created: "2026-03-30T04:14:03.152442184Z"
+    created: "2026-03-30T04:25:24.028450987Z"
     description: vLLM high-throughput LLM inference engine Helm chart
-    digest: fc6e4be901553a0fc75fe7a8d3f39b3d12e78d9cd9fd484cfbe270a2f1629d6a
+    digest: 24b0ca9ce1352185ed41fe1fe8d441c3ee456d7205e4b641356563d159640425
     home: https://github.com/axeprpr/helm-llm-repo
     keywords:
     - llm
@@ -179,4 +179,4 @@ entries:
     urls:
     - https://axeprpr.github.io/helm-llm-repo/vllm-inference-0.1.0.tgz
     version: 0.1.0
-generated: "2026-03-30T04:14:03.148062467Z"
+generated: "2026-03-30T04:25:24.024687176Z"
