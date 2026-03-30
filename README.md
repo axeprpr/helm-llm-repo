@@ -273,6 +273,438 @@ helm install vllm llm-center/vllm-inference \
 | GGUF 文件 | ReadWriteOnce | `local-path` (hostPath) |
 
 
+---
+
+## 🎯 显卡选择指南
+
+### 决策树：5 秒找到适合你的部署方案
+
+```
+你有 GPU 吗？
+├── NVIDIA GPU → 你需要什么场景？
+│   ├── 对话 / Embedding / Vision → vllm-inference
+│   │   ├── 单卡 → model.type=chat/embedding/vision
+│   │   ├── 多卡 → tensorParallelSize ≥ 2
+│   │   └── Reasoning 模型 → model.reasoningParser=deepseek_r1
+│   ├── RAG / Agent / 树结构推理 → sglang-inference
+│   └── 混合推理 → vllm-inference + sglang-inference
+├── AMD GPU → llamacpp-inference + gpuType=amd
+├── Intel GPU → llamacpp-inference + gpuType=vulkan
+├── 摩尔线程 → llamacpp-inference + gpuType=musa
+├── Apple Silicon → llamacpp-inference + gpuType=metal
+└── 无 GPU → llamacpp-inference + gpuType=none
+```
+
+---
+
+### 显存与模型容量速查表
+
+> **估算公式：** 所需显存 ≈ (模型参数量 × 2 bytes) + (maxModelLen × 8 bytes × KV头数比例)
+> 
+> **简化估算：** 16B 模型 ≈ 32GB 显存（FP16）
+
+| 显卡 | 显存 | Qwen2.5-7B | Qwen2.5-14B | Llama-3.1-8B | Llama-3.1-70B | Llama-3.3-70B | DeepSeek-V3 | Qwen3-32B |
+|------|------|-----------|-------------|-------------|--------------|--------------|-------------|-----------|
+| **T4** | 16GB | ✅ FP16 | ❌ | ✅ Q4 | ❌ | ❌ | ❌ | ❌ |
+| **L20** | 24GB | ✅ FP16 | ✅ FP16 | ✅ FP16 | ❌ | ❌ | ❌ | ❌ |
+| **L40** | 48GB | ✅ FP16 | ✅ FP16 | ✅ FP16 | ❌ | ❌ | ❌ | ❌ |
+| **A10G** | 24GB | ✅ FP16 | ✅ FP16 | ✅ FP16 | ❌ | ❌ | ❌ | ❌ |
+| **A100-SXM4** | 40GB | ✅ FP16 | ✅ FP16 | ✅ FP16 | ✅ TP2 | ✅ TP2 | ✅ TP2 | ❌ |
+| **A100-NVL** | 80GB | ✅ FP16 | ✅ FP16 | ✅ FP16 | ✅ TP1 | ✅ TP1 | ✅ TP1 | ✅ FP16 |
+| **H100** | 80GB | ✅ FP16 | ✅ FP16 | ✅ FP16 | ✅ TP1 | ✅ TP1 | ✅ TP1 | ✅ FP16 |
+| **H200** | 80GB | ✅ FP16 | ✅ FP16 | ✅ FP16 | ✅ TP1 | ✅ TP1 | ✅ TP1 | ✅ FP16 |
+| **H3** | 80GB | ✅ FP16 | ✅ FP16 | ✅ FP16 | ✅ TP1 | ✅ TP1 | ✅ TP1 | ✅ FP16 |
+| **MI210** | 64GB | ✅ FP16 | ✅ FP16 | ✅ FP16 | ✅ TP1 | ✅ TP1 | ✅ TP1 | ✅ FP16 |
+| **MI250X** | 128GB | ✅ FP16 | ✅ FP16 | ✅ FP16 | ✅ FP16 | ✅ FP16 | ✅ FP16 | ✅ FP16 |
+| **MI300X** | 192GB | ✅ FP16 | ✅ FP16 | ✅ FP16 | ✅ FP16 | ✅ FP16 | ✅ FP16 | ✅ FP16 |
+| **Apple M3 Max** | 64GB | ✅ FP16 | ✅ FP16 | ✅ FP16 | ❌ | ❌ | ❌ | ❌ |
+| **Apple M3 Ultra** | 512GB | ✅ FP16 | ✅ FP16 | ✅ FP16 | ✅ FP16 | ✅ FP16 | ✅ FP16 | ✅ FP16 |
+| **CPU (64C)** | - | ✅ Q4 | ❌ | ✅ Q4 | ❌ | ❌ | ❌ | ❌ |
+
+> **图例：** ✅ FP16 = 原生精度可跑 | ✅ Q4 = 量化后可跑 | ❌ = 显存不足
+> **TP1** = tensorParallelSize=1（单卡）| **TP2** = tensorParallelSize=2（双卡）
+
+---
+
+### 场景 A: NVIDIA T4 / L20 / L40 / A10G（单卡，推荐量化）
+
+**显存范围：** 16-48GB
+**推荐引擎：** vllm-inference
+**推荐模型：** Qwen2.5-7B / Qwen2.5-14B / Llama-3.1-8B
+
+> ⚠️ **14B 以上模型建议用量化**，AWQ 量化可在 24GB 内跑 14B 模型
+
+**方案 1: FP16 原生精度（推荐 7B 模型）**
+```bash
+helm install qwen7b llm-center/vllm-inference \
+  --set model.name=Qwen/Qwen2.5-7B-Instruct \
+  --set model.type=chat \
+  --set resources.limits.nvidia.com/gpu=1 \
+  --set engine.gpuMemoryUtilization=0.90 \
+  --set engine.maxModelLen=8192
+```
+参数说明：
+- `model.name` — HuggingFace 模型 ID
+- `resources.limits.nvidia.com/gpu=1` — 申请 1 张 GPU
+- `engine.gpuMemoryUtilization=0.90` — 使用 90% 显存（16GB 卡的 90% = 14.4GB）
+- `engine.maxModelLen=8192` — 最大上下文 8K token
+
+**方案 2: AWQ 量化（推荐 14B 模型，24GB 显卡）**
+```bash
+helm install qwen14b-awq llm-center/vllm-inference \
+  --set model.name=Qwen/Qwen2.5-14B-Instruct-AWQ \
+  --set model.format=awq \
+  --set resources.limits.nvidia.com/gpu=1 \
+  --set engine.gpuMemoryUtilization=0.85
+```
+参数说明：
+- `model.format=awq` — 使用 AWQ 4-bit 量化，显存占用减少 60%
+- AWQ 量化模型显存估算：参数量 × 0.5GB（如 14B × 0.5GB = 7GB）
+
+---
+
+### 场景 B: NVIDIA A100 40GB（单卡 / 双卡）
+
+**显存范围：** 40GB 或 80GB
+**推荐引擎：** vllm-inference
+**推荐模型：** Llama-3.1-70B（需 2 卡 TP2）
+
+**单卡（40GB，推荐 30B 以下模型）**
+```bash
+helm install qwen32b llm-center/vllm-inference \
+  --set model.name=Qwen/Qwen2.5-32B-Instruct \
+  --set resources.limits.nvidia.com/gpu=1 \
+  --set engine.gpuMemoryUtilization=0.90 \
+  --set engine.maxModelLen=16384
+```
+
+**双卡 TP2（40GB×2，推荐 70B 模型）**
+```bash
+helm install llama70b llm-center/vllm-inference \
+  --set model.name=meta-llama/Llama-3.1-70B-Instruct \
+  --set engine.tensorParallelSize=2 \
+  --set resources.limits.nvidia.com/gpu=2 \
+  --set engine.gpuMemoryUtilization=0.85 \
+  --set engine.maxModelLen=8192
+```
+参数说明：
+- `tensorParallelSize=2` — 切分到 2 张卡，每卡负载 20GB
+- `resources.limits.nvidia.com/gpu=2` — Kubernetes 申请 2 张 GPU
+- ⚠️ **两卡必须在同一节点**，用 `nodeSelector` 或 `affinity` 约束
+
+---
+
+### 场景 C: NVIDIA A100-NVL / H100 / H200 / H3（80GB 单卡）
+
+**显存范围：** 80GB
+**推荐引擎：** vllm-inference
+**推荐模型：** Llama-3.1-70B / Qwen2.5-72B / DeepSeek-V3
+
+**单卡跑 70B（原生 FP16）**
+```bash
+helm install llama70b llm-center/vllm-inference \
+  --set model.name=meta-llama/Llama-3.1-70B-Instruct \
+  --set engine.tensorParallelSize=1 \
+  --set resources.limits.nvidia.com/gpu=1 \
+  --set engine.gpuMemoryUtilization=0.90 \
+  --set engine.maxModelLen=8192
+```
+
+**长上下文优化（128K context）**
+```bash
+helm install llama70b ctx128k llm-center/vllm-inference \
+  --set model.name=meta-llama/Llama-3.1-70B-Instruct \
+  --set engine.tensorParallelSize=2 \
+  --set resources.limits.nvidia.com/gpu=2 \
+  --set engine.gpuMemoryUtilization=0.75 \
+  --set engine.maxModelLen=131072
+```
+参数说明：
+- `gpuMemoryUtilization=0.75` — 预留更多显存给 KV Cache，支持更长上下文
+- `maxModelLen=131072` — 128K token 上下文
+
+---
+
+### 场景 D: 多机推理 4-8 卡（A100 / H100 集群）
+
+**适用：** Llama-3.1-70B / Qwen2.5-72B / DeepSeek-V3（8B 以上模型）
+
+**4 卡 TP4**
+```bash
+helm install qwen72b llm-center/vllm-inference \
+  --set model.name=Qwen/Qwen2.5-72B-Instruct \
+  --set engine.tensorParallelSize=4 \
+  --set resources.limits.nvidia.com/gpu=4 \
+  --set engine.gpuMemoryUtilization=0.85 \
+  --set engine.pipelineParallelSize=1 \
+  --set engine.maxModelLen=8192
+```
+
+**8 卡 TP8（DeepSeek-V3）**
+```bash
+helm install deepseekv3 llm-center/vllm-inference \
+  --set model.name=deepseek-ai/DeepSeek-V3 \
+  --set engine.tensorParallelSize=8 \
+  --set engine.pipelineParallelSize=1 \
+  --set resources.limits.nvidia.com/gpu=8 \
+  --set engine.gpuMemoryUtilization=0.90 \
+  --set engine.maxModelLen=16384 \
+  --set replicaCount=8
+```
+参数说明：
+- `tensorParallelSize=8` — 8 张卡切分模型权重
+- `pipelineParallelSize=1` — 单机（多机改为 2 或 4）
+- `replicaCount=8` — 每张卡一个副本，形成完整推理管道
+
+---
+
+### 场景 E: AMD MI210 / MI250X / MI300X（ROCm）
+
+**推荐引擎：** llamacpp-inference + gpuType=amd
+**推荐镜像：** `ghcr.io/ggerganov/llama.cpp:server-rocm`
+
+> llama.cpp 是 AMD ROCm 上唯一成熟的高性能推理方案。vLLM 对 AMD 支持不完善。
+
+**MI300X 单卡（192GB，可跑 FP16 70B）**
+```bash
+helm install llama70b-rocm llm-center/llamacpp-inference \
+  --set model.name=TheBloke/Llama-3.1-70B-Instruct-GGUF \
+  --set model.ggufFile=Llama-3.1-70B-Instruct-FP8.gguf \
+  --set gpuType=amd \
+  --set engine.gpuLayers=-1 \
+  --set engine.contextSize=8192 \
+  --set engine.parallel=4
+```
+参数说明：
+- `gpuType=amd` — 自动使用 `server-rocm` 后端镜像
+- `engine.gpuLayers=-1` — 加载所有层到 GPU（-1 = 全部）
+- `model.ggufFile` — 指定具体 GGUF 文件（建议 FP8 量化）
+- `engine.parallel=4` — 4 个并行序列
+
+**MI250X 多卡 TP2**
+```bash
+helm install llama70b-rocm tp2 llm-center/llamacpp-inference \
+  --set model.name=TheBloke/Llama-3.1-70B-Instruct-GGUF \
+  --set model.ggufFile=Llama-3.1-70B-Instruct-Q4_K_M.gguf \
+  --set gpuType=amd \
+  --set engine.tensorParallelSize=2 \
+  --set engine.gpuLayers=-1
+```
+
+---
+
+### 场景 F: Intel Data Center GPU（Vulkan 后端）
+
+**推荐引擎：** llamacpp-inference + gpuType=vulkan
+**推荐镜像：** `ghcr.io/ggerganov/llama.cpp:server`
+
+> Intel Data Center GPU Max (PVC) 上用 Vulkan 后端。注意：vulkan 后端为跨厂商设计，性能略低于专用 CUDA/ROCm 后端。
+
+```bash
+helm install qwen7b-intel llm-center/llamacpp-inference \
+  --set model.name=TheBloke/Qwen2.5-7B-Instruct-GGUF \
+  --set model.ggufFile=Qwen2.5-7B-Instruct-Q4_K_M.gguf \
+  --set gpuType=vulkan \
+  --set engine.gpuLayers=-1 \
+  --set engine.contextSize=4096
+```
+参数说明：
+- `gpuType=vulkan` — 自动使用 `server` 后端镜像（Vulkan 通用）
+- Vulkan 驱动必须已安装（`apt-get install vulkan-tools`）
+
+---
+
+### 场景 G: 摩尔线程 MUSA GPU
+
+**推荐引擎：** llamacpp-inference + gpuType=musa
+**推荐镜像：** `ghcr.io/ggerganov/llama.cpp:server-musa`
+
+> 摩尔线程 MUSA 生态正在发展中，生产使用前请确认驱动和运行时版本。
+
+```bash
+helm install qwen7b-musa llm-center/llamacpp-inference \
+  --set model.name=TheBloke/Qwen2.5-7B-Instruct-GGUF \
+  --set model.ggufFile=Qwen2.5-7B-Instruct-Q4_K_M.gguf \
+  --set gpuType=musa \
+  --set engine.gpuLayers=-1
+```
+
+---
+
+### 场景 H: Apple Silicon M1/M2/M3/M4（Metal 后端）
+
+**推荐引擎：** llamacpp-inference + gpuType=none（Metal 后端在 llama.cpp 里通过 vulkan 处理）
+**备选方案：** Ollama 官方支持 Metal（但 K8s 场景不推荐）
+
+> Apple Silicon GPU 在 K8s 场景有限制。推荐开发/测试用 Ollama Desktop，生产用专用 GPU 服务器。
+
+**Mac + Docker Desktop（开发测试用）**
+```bash
+helm install qwen7b-metal llm-center/llamacpp-inference \
+  --set model.name=TheBloke/Qwen2.5-7B-Instruct-GGUF \
+  --set model.ggufFile=Qwen2.5-7B-Instruct-Q4_K_M.gguf \
+  --set gpuType=none \
+  --set engine.threads=12 \
+  --set resources.limits.cpu=12 \
+  --set resources.limits.memory=16Gi
+```
+
+---
+
+### 场景 I: CPU Only（无 GPU）
+
+**适用：** 开发测试、轻量模型（≤3B）、内网无 GPU 环境
+**推荐引擎：** llamacpp-inference + gpuType=none
+**推荐镜像：** `ghcr.io/ggerganov/llama.cpp:server-cpu`
+**性能预期：** 1B 模型 ≈ 10-30 tokens/s，7B 模型 ≈ 1-3 tokens/s
+
+```bash
+# TinyLlama（推荐 CPU 入门，2GB 内存）
+helm install tinyllama llm-center/llamacpp-inference \
+  --set model.name=TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF \
+  --set model.ggufFile=TinyLlama-1.1B-Chat-v1.0.Q4_K_M.gguf \
+  --set gpuType=none \
+  --set engine.threads=16 \
+  --set engine.contextSize=2048 \
+  --set resources.limits.cpu=16 \
+  --set resources.limits.memory=4Gi
+
+# Qwen2.5-1.5B（中等规模 CPU 模型）
+helm install qwen1b5-cpu llm-center/llamacpp-inference \
+  --set model.name=TheBloke/Qwen2.5-1.5B-Instruct-GGUF \
+  --set model.ggufFile=Qwen2.5-1.5B-Instruct-Q4_K_M.gguf \
+  --set gpuType=none \
+  --set engine.threads=16 \
+  --set engine.contextSize=4096 \
+  --set resources.limits.cpu=16 \
+  --set resources.limits.memory=8Gi
+```
+参数说明：
+- `gpuType=none` — 自动使用 `server-cpu` 后端镜像
+- `engine.threads=16` — 分配 16 核 CPU（设为物理核心数）
+- CPU 模型必须使用 GGUF 量化格式
+
+---
+
+### 显存计算器
+
+```
+估算 vLLM 所需显存：
+
+基础公式：
+显存 = 模型参数量 × 2B (FP16) × 压缩比 + KV Cache
+
+| 量化方式 | 压缩比 | 7B 显存 | 14B 显存 | 70B 显存 |
+|---------|--------|---------|---------|---------|
+| FP16 | 1.0 | 14GB | 28GB | 140GB |
+| FP8 | 0.5 | 7GB | 14GB | 70GB |
+| INT4 (AWQ/GPTQ) | 0.25 | 3.5GB | 7GB | 35GB |
+| INT8 | 0.5 | 7GB | 14GB | 70GB |
+
+KV Cache 估算：
+KV Cache = 2 × 层数 × 每层KV头维度 × maxModelLen × 2 bytes
+         ≈ 0.5GB per token per 1B parameters
+
+示例：Qwen2.5-7B, maxModelLen=8192, FP16
+KV Cache ≈ 0.5GB × 7 × 8K / 1M ≈ 3GB
+总显存 ≈ 14GB + 3GB = 17GB → 需要 A10G(24GB) 或 T4(16GB)+AWQ
+```
+
+---
+
+## 🧠 推理引擎运行逻辑
+
+### vLLM 如何工作
+
+```
+1. Pod 启动
+   └── 下载模型（HuggingFace → /root/.cache/huggingface/）
+       └── vLLM Server 进程启动
+           └── 加载模型到 GPU（分片 + KV Cache 预分配）
+               └── 启动 HTTP Server（端口 8000）
+
+2. 请求流程
+   HTTP POST /v1/chat/completions
+   → Kubernetes Service（负载均衡）
+   → vLLM Pod
+   → PagedAttention 管理 KV Cache
+   → GPU 推理（CUDA kernel）
+   → Streaming HTTP 响应
+
+3. vLLM 内部
+   ├── PagedAttention：虚拟显存管理，支持 OS 级 KV Cache
+   ├── Continuous Batching：动态 batch 请求
+   ├── Tensor Parallelism：多卡切分模型权重
+   └── CUDA Graph：加速推理 kernel
+```
+
+### llama.cpp 如何工作
+
+```
+1. Pod 启动
+   └── 下载 GGUF 模型文件
+       └── llama.cpp server 进程启动
+           └── 加载 GGUF 到内存/GPU
+               └── 启动 HTTP Server（端口 8000）
+
+2. llama.cpp vs vLLM 区别
+   ├── llama.cpp 不预分配 KV Cache（按需分配，显存更灵活）
+   ├── 支持更多量化格式（Q8_0, Q6_K, Q4_K_M 等 GGUF 格式）
+   ├── 不支持 Continuous Batching（吞吐量低于 vLLM）
+   └── CPU/GPU/Metal 统一接口
+```
+
+### SGLang vs vLLM 选择逻辑
+
+```
+选 vLLM：吞吐量优先、简单场景、Embedding/Vision
+选 SGLang：复杂推理（RAG/Agent）、RadixAttention 缓存、树结构生成
+
+SGLang 独有特性：
+├── RadixAttention：跨请求的 KV Cache 自动复用（RAG 必备）
+├── Constrained Decoding：带约束的生成（JSON Schema / Regex）
+├── Chain-of-Density：文档摘要
+├── Beam Search：高质量翻译
+└── Tree Attention：树结构推理（代码补全）
+```
+
+### 部署逻辑总结
+
+```
+                    ┌─────────────────┐
+                    │  推理请求进来     │
+                    └────────┬────────┘
+                             ▼
+               ┌──────────────────────────────┐
+               │  Kubernetes Ingress / Service │
+               └──────────────┬───────────────┘
+                              ▼
+        ┌──────────────────────────────────────────┐
+        │  选择推理引擎                           │
+        │  ├── NVIDIA GPU → vLLM 或 SGLang       │
+        │  ├── AMD GPU → llama.cpp (ROCm)        │
+        │  ├── Intel / 摩尔线程 → llama.cpp (V)  │
+        │  ├── Apple Silicon → llama.cpp (CPU)   │
+        │  └── CPU Only → llama.cpp (CPU)        │
+        └──────────────┬─────────────────────────┘
+                       ▼
+        ┌──────────────────────────────────────────┐
+        │  选择部署规模                           │
+        │  ├── ≤7B / 16GB → 单卡 FP16             │
+        │  ├── 7B-14B / 16GB → 单卡 AWQ           │
+        │  ├── 14B-30B / 40GB → 单卡 AWQ          │
+        │  ├── 30B-70B / 80GB → TP2 (双卡)        │
+        │  └── 70B+ / 8卡 → TP8 + PP (多机)      │
+        └──────────────┬─────────────────────────┘
+                       ▼
+        ┌──────────────────────────────────────────┐
+        │  配置调度策略                            │
+        │  ├── 普通集群 → 原生调度                  │
+        │  ├── GPU 共享 → HAMi                    │
+        │  └── 批处理队列 → Volcano               │
+        └──────────────────────────────────────────┘
+```
+
 ## 快速安装（通用）
 
 ```bash
