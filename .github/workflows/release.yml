@@ -23,13 +23,22 @@ permissions:
   id-token: write
 
 jobs:
-  lint-and-package:
+  release:
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.event_name == 'release'
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Checkout
+      - name: Checkout main
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Checkout gh-pages
+        run: |
+          git clone --branch gh-pages --depth 1 https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git _site 2>/dev/null || true
+          mkdir -p _site
 
       - name: Set up Helm
         uses: azure/setup-helm@v4
@@ -52,61 +61,30 @@ jobs:
 
       - name: Package charts
         run: |
-          mkdir -p packages
+          mkdir -p _site
           for chart in charts/*/; do
-            helm package "${chart}" --destination packages/
+            helm package "${chart}" --destination _site/
           done
-          ls packages/
+          ls _site/
 
       - name: Generate index
         run: |
-          helm repo index packages --url https://axeprpr.github.io/helm-llm-repo
-          cat packages/index.yaml
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: helm-charts
-          path: packages/
-          retention-days: 30
-
-      - name: Validate index
-        run: python3 scripts/validate-index.py
-
-  publish-pages:
-    needs: lint-and-package
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.event_name == 'release'
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          ref: gh-pages
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: helm-charts
-          path: .
-
-      - name: Setup Git
-        run: |
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-
-      - name: Commit and push
-        run: |
-          cp packages/*.tgz ./
-          helm repo index . --url https://axeprpr.github.io/helm-llm-repo
-          git add *.tgz index.yaml
-          git commit -m "Release charts $(date +%Y-%m-%d)"
-          git push -f origin gh-pages
+          python3 scripts/validate-index.py
+          helm repo index _site --url https://axeprpr.github.io/helm-llm-repo --merge _site/index.yaml 2>/dev/null || \
+            helm repo index _site --url https://axeprpr.github.io/helm-llm-repo
+          echo "--- INDEX ---"
+          cat _site/index.yaml
 
       - name: Deploy to GitHub Pages
+        run: |
+          cd _site
+          git init
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add *.tgz index.yaml
+          git commit -m "Release charts $(date +%Y-%m-%d)"
+          git push -f https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD:gh-pages
+
+      - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
