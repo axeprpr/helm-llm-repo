@@ -1,0 +1,64 @@
+{{- $type := .Values.model.type | default "chat" -}}
+{{- $defaultModel := include "vllm-inference.defaultModel" . -}}
+{{- $modelName := .Values.model.name | default $defaultModel -}}
+{{- $fullname := include "vllm-inference.fullname" . -}}
+{{- $port := .Values.engine.port -}}
+{{- $ns := .Release.Namespace -}}
+
+{{ $fullname }} deployed!
+
+Type: {{ $type }}
+Model: {{ $modelName }}
+Namespace: {{ $ns }}
+
+{{ if eq $type "chat" -}}
+=== Chat / Text Generation ===
+{{ else if eq $type "embedding" -}}
+=== Embedding / Rerank ===
+{{ else if eq $type "vision" -}}
+=== Vision / Multimodal ===
+{{ end -}}
+
+API Endpoints:
+- /v1/chat/completions - Chat completion
+- /v1/completions     - Text completion
+{{ if or (eq $type "embedding") (eq $type "chat") }}
+- /v1/embeddings      - Generate embeddings
+{{ end }}
+{{ if eq $type "embedding" }}
+- /v1/rerank          - Rerank documents
+{{ end }}
+{{ if eq $type "vision" }}
+- /v1/chat/completions - Vision via multipart messages
+{{ end }}
+- /health             - Health check
+- /metrics            - Prometheus metrics
+
+{{ if eq $type "chat" -}}
+Chat Example:
+curl -X POST http://{{ $fullname }}.{{ $ns }}:{{ $port }}/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"{{ $modelName }}","messages":[{"role":"user","content":"Hello!"}]}'
+{{ else if eq $type "embedding" -}}
+
+Embedding Example:
+curl -X POST http://{{ $fullname }}.{{ $ns }}:{{ $port }}/v1/embeddings \
+  -H "Content-Type: application/json" \
+  -d '{"input":"Hello world","model":"{{ $modelName }}"}'
+
+Rerank Example:
+curl -X POST http://{{ $fullname }}.{{ $ns }}:{{ $port }}/v1/rerank \
+  -H "Content-Type: application/json" \
+  -d '{"query":"Quantum computing","documents":["GPU computing","Cloud native"],"model":"{{ $modelName }}"}'
+{{ else if eq $type "vision" -}}
+
+Vision Example (image URL):
+curl -X POST http://{{ $fullname }}.{{ $ns }}:{{ $port }}/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"{{ $modelName }}","messages":[{"role":"user","content":[{"type":"text","text":"Describe this image:"},{"type":"image_url","image_url":{"url":"https://example.com/photo.jpg"}}]}]}'
+
+Vision Example (base64):
+curl -X POST http://{{ $fullname }}.{{ $ns }}:{{ $port }}/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"{{ $modelName }}","messages":[{"role":"user","content":[{"type":"text","text":"What is in this image?"},{"type":"image_url","image_url":{"url":"data:image/jpeg;base64,/9j/4AAQSkZ..."}}]}]}'
+{{ end -}}

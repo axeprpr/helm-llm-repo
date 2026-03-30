@@ -85,7 +85,7 @@ spec:
         - name: HF_HOME
           value: {{ .Values.persistence.mountPath | quote }}
         - name: MODEL_NAME
-          value: {{ .Values.model.name | quote }}
+          value: {{ default (include "vllm-inference.defaultModel" .) .Values.model.name | quote }}
         {{- with .Values.envFrom }}
         envFrom:
           {{- toYaml . | nindent 10 }}

@@ -10,11 +10,9 @@
 
 | Chart | 引擎 | 适用场景 | 多 GPU | 多机 |
 |-------|------|---------|--------|------|
-| `vllm-inference` | vLLM | 通用高吞吐推理 | ✅ | ✅ |
+| `vllm-inference` | vLLM | 通用推理：Chat / Embedding / Rerank / Vision | ✅ | ✅ |
 | `sglang-inference` | SGLang | 树结构/RAG/Agent 推理 | ✅ | ✅ |
 | `llamacpp-inference` | llama.cpp | CPU/GPU、GGUF 格式、AMD/Intel | ✅ | ❌ |
-| `embedding-inference` | vLLM | Embedding 生成、Rerank | ✅ | ✅ |
-| `vision-inference` | vLLM | 多模态图片理解 | ✅ | ✅ |
 
 ---
 
@@ -283,7 +281,7 @@ helm repo add llm-center https://axeprpr.github.io/helm-llm-repo
 helm repo update
 
 # 一行安装（默认 Qwen2.5-7B，单卡 NVIDIA）
-helm install qwen llm-center/vllm-inference
+helm install qwen llm-center/vllm-inference  # chat by default
 
 # 查看服务状态
 kubectl get pods -l app.kubernetes.io/name=vllm-inference
@@ -393,19 +391,19 @@ helm install huge llm-center/vllm-inference \
 
 ```bash
 # BGE-M3（推荐，中英文兼顾，稀疏+稠密向量）
-helm install embed llm-center/embedding-inference \
+helm install embed llm-center/vllm-inference \
   --set model.name=BAAI/bge-m3 \
   --set engine.task=embed \
   --set resources.limits.nvidia.com/gpu=1
 
 # Nomic Embed（英文为主）
-helm install nomic llm-center/embedding-inference \
+helm install nomic llm-center/vllm-inference \
   --set model.name=nomic-ai/nomic-embed-text-v1.5 \
   --set engine.task=embed \
   --set engine.pooler=mean
 
 # 调用示例
-curl -X POST http://embed-embedding-inference:8000/v1/embeddings \
+curl -X POST http://embed-vllm-inference:8000/v1/embeddings \
   -H "Content-Type: application/json" \
   -d '{
     "input": "什么是 Kubernetes",
@@ -421,13 +419,13 @@ curl -X POST http://embed-embedding-inference:8000/v1/embeddings \
 
 ```bash
 # BGE Reranker
-helm install rerank llm-center/embedding-inference \
+helm install rerank llm-center/vllm-inference \
   --set model.name=BAAI/bge-reranker-v2-m3 \
   --set engine.task=rank \
   --set resources.limits.nvidia.com/gpu=1
 
 # 调用示例
-curl -X POST http://rerank-embedding-inference:8000/v1/rerank \
+curl -X POST http://rerank-vllm-inference:8000/v1/rerank \
   -H "Content-Type: application/json" \
   -d '{
     "query": "量子计算原理",
@@ -448,25 +446,25 @@ curl -X POST http://rerank-embedding-inference:8000/v1/rerank \
 
 ```bash
 # LLaVA 1.5（轻量，7B）
-helm install llava llm-center/vision-inference \
+helm install llava llm-center/vllm-inference \
   --set model.name=llava-hf/llava-1.5-7b-hf \
   --set resources.limits.nvidia.com/gpu=1 \
   --set resources.limits.memory=32Gi
 
 # Qwen2-VL（中文强，支持更长上下文）
-helm install qwenvl llm-center/vision-inference \
+helm install qwenvl llm-center/vllm-inference \
   --set model.name=Qwen/Qwen2-VL-7B-Instruct \
   --set engine.maxModelLen=8192 \
   --set resources.limits.nvidia.com/gpu=1
 
 # InternVL2-26B（最强开源多模态）
-helm install internvl llm-center/vision-inference \
+helm install internvl llm-center/vllm-inference \
   --set model.name=OpenGVLab/InternVL2-26B \
   --set engine.tensorParallelSize=2 \
   --set resources.limits.nvidia.com/gpu=2
 
 # 调用示例（图片 URL）
-curl -X POST http://llava-vision-inference:8000/v1/chat/completions \
+curl -X POST http://llava-vllm-inference:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "llava-hf/llava-1.5-7b-hf",
@@ -482,7 +480,7 @@ curl -X POST http://llava-vision-inference:8000/v1/chat/completions \
   }'
 
 # 调用示例（Base64 图片）
-curl -X POST http://llava-vision-inference:8000/v1/chat/completions \
+curl -X POST http://llava-vllm-inference:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "llava-hf/llava-1.5-7b-hf",
@@ -739,9 +737,9 @@ make clean              # 清理构建产物
 | 对话 | Qwen2.5-7B-Instruct | vLLM | 16GB |
 | 对话 | Llama-3.3-70B-Instruct | vLLM (4卡) | 4×20GB |
 | 对话 | DeepSeek-V3 | SGLang | 8×A100 |
-| Embedding | BAAI/bge-m3 | vLLM | 8GB |
-| Rerank | BAAI/bge-reranker-v2-m3 | vLLM | 8GB |
-| Vision | Qwen2-VL-7B-Instruct | vLLM | 24GB |
+| Embedding | BAAI/bge-m3 | vLLM (embedding) | 8GB |
+| Rerank | BAAI/bge-reranker-v2-m3 | vLLM (embedding) | 8GB |
+| Vision | Qwen/Qwen2-VL-7B-Instruct | vLLM (vision) | 24GB |
 | Vision | InternVL2-26B | vLLM (2卡) | 2×40GB |
 | 本地运行 | TinyLlama-1.1B | llama.cpp | 2GB (CPU) |
 

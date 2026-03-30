@@ -5,9 +5,6 @@ Expand the name of the chart.
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
-{{/*
-Create a default fully qualified app name.
-*/}}
 {{- define "vllm-inference.fullname" -}}
 {{- if .Values.fullnameOverride }}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
@@ -21,16 +18,10 @@ Create a default fully qualified app name.
 {{- end }}
 {{- end }}
 
-{{/*
-Create chart name and version as used by the chart label.
-*/}}
 {{- define "vllm-inference.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
-{{/*
-Common labels
-*/}}
 {{- define "vllm-inference.labels" -}}
 helm.sh/chart: {{ include "vllm-inference.chart" . }}
 {{ include "vllm-inference.selectorLabels" . }}
@@ -40,104 +31,104 @@ app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
-{{/*
-Selector labels
-*/}}
 {{- define "vllm-inference.selectorLabels" -}}
 app.kubernetes.io/name: {{ include "vllm-inference.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
-{{- define "vllm-inference.serviceAccountName" -}}
-{{- if .Values.serviceAccount.create }}
-{{- default (include "vllm-inference.fullname" .) .Values.serviceAccount.name }}
-{{- else }}
-{{- default "default" .Values.serviceAccount.name }}
-{{- end }}
-{{- end }}
-
-{{- define "vllm-inference.schedulerName" -}}
-{{- if .Values.scheduler.name }}
-{{- .Values.scheduler.name }}
-{{- else if eq .Values.scheduler.type "hami" }}
-hami-scheduler
-{{- else if eq .Values.scheduler.type "volcano" }}
-volcano
-{{- end }}
-{{- end }}
-
-{{- define "vllm-inference.podAnnotations" -}}
-{{- $annotations := dict -}}
-{{- if .Values.podAnnotations }}
-{{- range $k, $v := .Values.podAnnotations }}
-{{- $_ := set $annotations $k $v }}
-{{- end }}
-{{- end }}
-{{- if .Values.scheduler.annotations }}
-{{- range $k, $v := .Values.scheduler.annotations }}
-{{- $_ := set $annotations $k $v }}
-{{- end }}
-{{- end }}
-{{- if and (eq .Values.scheduler.type "volcano") .Values.scheduler.volcano.queueName }}
-{{- $_ := set $annotations "scheduling.volcano.sh/queue-name" .Values.scheduler.volcano.queueName }}
-{{- end }}
-{{- if and (eq .Values.scheduler.type "volcano") .Values.scheduler.volcano.createPodGroup }}
-{{- $_ := set $annotations "scheduling.k8s.io/group-name" (include "vllm-inference.fullname" .) }}
-{{- end }}
-{{- if and (eq .Values.scheduler.type "hami") .Values.scheduler.hami.nodeSchedulerPolicy }}
-{{- $_ := set $annotations "hami.io/node-scheduler-policy" .Values.scheduler.hami.nodeSchedulerPolicy }}
-{{- end }}
-{{- if and (eq .Values.scheduler.type "hami") .Values.scheduler.hami.gpuSchedulerPolicy }}
-{{- $_ := set $annotations "hami.io/gpu-scheduler-policy" .Values.scheduler.hami.gpuSchedulerPolicy }}
-{{- end }}
-{{- if gt (len $annotations) 0 }}
-{{- toYaml $annotations }}
-{{- end }}
-{{- end }}
-
-{{/*
-GPU tolerations based on gpuType
-*/}}
 {{- define "vllm-inference.gpuTolerations" -}}
+{{- $base := list }}
 {{- if eq .Values.gpuType "nvidia" }}
-- key: "nvidia.com/gpu"
-  operator: "Exists"
-  effect: "NoSchedule"
-{{- else if eq .Values.gpuType "ascend" }}
-- key: "Ascend.com/gpu"
-  operator: "Exists"
-  effect: "NoSchedule"
+{{- $base = append $base (dict "key" "nvidia.com/gpu" "operator" "Exists" "effect" "NoSchedule") }}
 {{- else if eq .Values.gpuType "amd" }}
-- key: "amd.com/gpu"
-  operator: "Exists"
-  effect: "NoSchedule"
+{{- $base = append $base (dict "key" "amd.com/gpu" "operator" "Exists" "effect" "NoSchedule") }}
+{{- else if eq .Values.gpuType "ascend" }}
+{{- $base = append $base (dict "key" "Ascend.com/gpu" "operator" "Exists" "effect" "NoSchedule") }}
+{{- else if eq .Values.gpuType "intel" }}
+{{- $base = append $base (dict "key" "gpu.intel.com/tile" "operator" "Exists" "effect" "NoSchedule") }}
 {{- end }}
+{{- $user := .Values.tolerations | default list }}
+{{- $combined := concat $base $user | uniq }}
+{{- toYaml $combined }}
 {{- end }}
 
 {{/*
-Build vLLM command arguments
+Build vLLM engine command based on model.type
+- chat: standard vLLM server
+- embedding: vLLM server with --task embed/rank
+- vision: vLLM server (multipart messages handled automatically)
 */}}
 {{- define "vllm-inference.engineArgs" -}}
 {{- $args := list }}
-{{- $args = append $args (printf "--model %s" .Values.model.name) }}
-{{- $args = append $args (printf "--trust-remote-code") }}
+{{- $args = append $args "--model" }}
+{{- $args = append $args .Values.model.name }}
+{{- $args = append $args "--trust-remote-code" }}
 {{- if .Values.model.hfToken }}
-{{- $args = append $args (printf "--hf-token %s" .Values.model.hfToken) }}
+{{- $args = append $args "--hf-token" }}
+{{- $args = append $args .Values.model.hfToken }}
 {{- end }}
 {{- if .Values.engine.tensorParallelSize }}
-{{- $args = append $args (printf "--tensor-parallel-size %d" (int .Values.engine.tensorParallelSize)) }}
+{{- $args = append $args "--tensor-parallel-size" }}
+{{- $args = append $args (printf "%d" (int .Values.engine.tensorParallelSize)) }}
 {{- end }}
 {{- if .Values.engine.pipelineParallelSize }}
-{{- $args = append $args (printf "--pipeline-parallel-size %d" (int .Values.engine.pipelineParallelSize)) }}
+{{- $args = append $args "--pipeline-parallel-size" }}
+{{- $args = append $args (printf "%d" (int .Values.engine.pipelineParallelSize)) }}
 {{- end }}
-{{- $args = append $args (printf "--gpu-memory-utilization %.2f" .Values.engine.gpuMemoryUtilization) }}
-{{- $args = append $args (printf "--max-model-len %d" (int .Values.engine.maxModelLen)) }}
+{{- $args = append $args "--gpu-memory-utilization" }}
+{{- $args = append $args (printf "%.2f" .Values.engine.gpuMemoryUtilization) }}
+{{- $args = append $args "--max-model-len" }}
+{{- $args = append $args (printf "%d" (int .Values.engine.maxModelLen)) }}
+{{- $args = append $args "--port" }}
+{{- $args = append $args (printf "%d" (int .Values.engine.port)) }}
+{{- if eq .Values.model.type "embedding" }}
+{{- $args = append $args "--task" }}
+{{- $args = append $args .Values.engine.embeddingTask }}
+{{- if eq .Values.engine.embeddingTask "embed" }}
+{{- $args = append $args "--pooler-output-fn" }}
+{{- $args = append $args .Values.engine.poolerType }}
+{{- end }}
 {{- if .Values.engine.enablePrefixCaching }}
 {{- $args = append $args "--enable-prefix-caching" }}
 {{- end }}
-{{- $args = append $args (printf "--port %d" (int .Values.engine.port)) }}
+{{- end }}
 {{- if .Values.engine.extraArgs }}
 {{- $args = append $args .Values.engine.extraArgs }}
 {{- end }}
 {{- join " " $args }}
+{{- end }}
+
+{{/*
+Determine default model name based on model.type
+*/}}
+{{- define "vllm-inference.defaultModel" -}}
+{{- if eq .Values.model.type "embedding" }}BAAI/bge-m3{{- else if eq .Values.model.type "vision" }}Qwen/Qwen2-VL-7B-Instruct{{- else }}Qwen/Qwen2.5-7B-Instruct{{- end }}
+{{- end }}
+{{/*
+Create the name for the service account.
+*/}}
+{{- define "vllm-inference.serviceAccountName" -}}
+{{- if .Values.serviceAccount.name }}
+{{- .Values.serviceAccount.name }}
+{{- else }}
+{{- include "vllm-inference.fullname" . }}
+{{- end }}
+{{- end }}
+{{/*
+Build unified pod annotations from all sources (scheduler, user, annotations).
+*/}}
+{{- define "vllm-inference.podAnnotations" -}}
+{{- $annos := merge
+  (.Values.scheduler.annotations | default dict)
+  (.Values.podAnnotations | default dict)
+  (.Values.annotations | default dict)
+-}}
+{{- toYaml $annos }}
+{{- end }}
+{{/*
+Determine scheduler name based on scheduler.type.
+Returns empty string for native scheduler (kube-scheduler default).
+*/}}
+{{- define "vllm-inference.schedulerName" -}}
+{{- if eq .Values.scheduler.type "hami" }}hami-scheduler{{- else if eq .Values.scheduler.type "volcano" }}volcano{{- else }}{{ .Values.scheduler.name | default "" }}{{- end }}
 {{- end }}
