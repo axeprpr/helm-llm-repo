@@ -3,7 +3,7 @@ name: tgi-inference
 description: TGI high-throughput LLM inference engine Helm chart
 type: application
 version: 0.1.0
-appVersion: "2.0"
+appVersion: "3.3.7"
 keywords:
   - llm
   - TGI

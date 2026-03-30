@@ -3,7 +3,7 @@ name: llamacpp-inference
 description: llama.cpp high-throughput LLM inference engine Helm chart
 type: application
 version: 0.1.0
-appVersion: "latest"
+appVersion: "b8580"
 keywords:
   - llm
   - llamacpp

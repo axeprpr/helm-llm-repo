@@ -3,7 +3,7 @@ name: vllm-inference
 description: vLLM high-throughput LLM inference engine Helm chart
 type: application
 version: 0.1.0
-appVersion: "0.4.0"
+appVersion: "0.18.0"
 keywords:
   - llm
   - vllm

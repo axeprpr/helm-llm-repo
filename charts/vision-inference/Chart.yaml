@@ -3,7 +3,7 @@ name: vision-inference
 description: Vision multimodal LLM inference with vLLM (LLaVA, Qwen-VL, InternVL, etc.)
 type: application
 version: 0.1.0
-appVersion: "0.6.0"
+appVersion: "0.18.0"
 keywords:
   - vision
   - multimodal

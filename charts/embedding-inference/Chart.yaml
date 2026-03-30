@@ -3,7 +3,7 @@ name: embedding-inference
 description: High-throughput embedding and rerank inference with vLLM
 type: application
 version: 0.1.0
-appVersion: "0.4.0"
+appVersion: "0.18.0"
 keywords:
   - embedding
   - rerank
