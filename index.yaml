@@ -1,0 +1,128 @@
+apiVersion: v1
+entries:
+  llamacpp-inference:
+  - apiVersion: v2
+    appVersion: latest
+    created: "2026-03-30T11:47:51.702980622+08:00"
+    description: llama.cpp high-throughput LLM inference engine Helm chart
+    digest: 752c6e1e1fe6912d0ac7269237b49132f87a550c4a6a3fc1c5c2d6755cee713f
+    home: https://github.com/axeprpr/helm-llm-repo
+    keywords:
+    - llm
+    - llamacpp
+    - inference
+    - gpu
+    - nvidia
+    - ascend
+    - sglang
+    maintainers:
+    - email: axe3@qq.com
+      name: axeprpr
+    name: llamacpp-inference
+    sources:
+    - https://github.com/axeprpr/helm-llm-repo
+    type: application
+    urls:
+    - https://axeprpr.github.io/helm-llm-repo/llamacpp-inference-0.1.0.tgz
+    version: 0.1.0
+  ollama-inference:
+  - apiVersion: v2
+    appVersion: latest
+    created: "2026-03-30T11:47:51.70358318+08:00"
+    description: Ollama high-throughput LLM inference engine Helm chart
+    digest: b4c3a6193b66e73967d0b18491418378fe05035521a0404ceef360e90fb115ec
+    home: https://github.com/axeprpr/helm-llm-repo
+    keywords:
+    - llm
+    - Ollama
+    - inference
+    - gpu
+    - nvidia
+    - ascend
+    - sglang
+    maintainers:
+    - email: axe3@qq.com
+      name: axeprpr
+    name: ollama-inference
+    sources:
+    - https://github.com/axeprpr/helm-llm-repo
+    type: application
+    urls:
+    - https://axeprpr.github.io/helm-llm-repo/ollama-inference-0.1.0.tgz
+    version: 0.1.0
+  sglang-inference:
+  - apiVersion: v2
+    appVersion: latest
+    created: "2026-03-30T11:47:51.704167593+08:00"
+    description: SGLang high-throughput LLM inference engine Helm chart
+    digest: bc479fef0d0742445f08dbb185e13242553f0c7690d2fd3f1b1be06fc3221954
+    home: https://github.com/axeprpr/helm-llm-repo
+    keywords:
+    - llm
+    - SGLang
+    - inference
+    - gpu
+    - nvidia
+    - ascend
+    - sglang
+    maintainers:
+    - email: axe3@qq.com
+      name: axeprpr
+    name: sglang-inference
+    sources:
+    - https://github.com/axeprpr/helm-llm-repo
+    type: application
+    urls:
+    - https://axeprpr.github.io/helm-llm-repo/sglang-inference-0.1.0.tgz
+    version: 0.1.0
+  tgi-inference:
+  - apiVersion: v2
+    appVersion: "2.0"
+    created: "2026-03-30T11:47:51.704721447+08:00"
+    description: TGI high-throughput LLM inference engine Helm chart
+    digest: 05fa46c4f821091d6bb4fd61d15952e70c1c801644931fdca73eab5e7775d45a
+    home: https://github.com/axeprpr/helm-llm-repo
+    keywords:
+    - llm
+    - TGI
+    - inference
+    - gpu
+    - nvidia
+    - ascend
+    - sglang
+    maintainers:
+    - email: axe3@qq.com
+      name: axeprpr
+    name: tgi-inference
+    sources:
+    - https://github.com/axeprpr/helm-llm-repo
+    type: application
+    urls:
+    - https://axeprpr.github.io/helm-llm-repo/tgi-inference-0.1.0.tgz
+    version: 0.1.0
+  vllm-inference:
+  - apiVersion: v2
+    appVersion: 0.4.0
+    created: "2026-03-30T11:47:51.705319531+08:00"
+    description: vLLM high-throughput LLM inference engine Helm chart
+    digest: 78f005118f4201f7cf78cb4dea2494ec8d3514b6c95afa1d8b26bd2af707c259
+    home: https://github.com/axeprpr/helm-llm-repo
+    keywords:
+    - llm
+    - vllm
+    - inference
+    - gpu
+    - nvidia
+    - ascend
+    - sglang
+    maintainers:
+    - email: axe3@qq.com
+      name: axeprpr
+    name: vllm-inference
+    sources:
+    - https://github.com/axeprpr/helm-llm-repo
+    type: application
+    urls:
+    - https://axeprpr.github.io/helm-llm-repo/vllm-inference-0.1.0.tgz
+    version: 0.1.0
+generated: "2026-03-30T11:47:51.702179334+08:00"
