@@ -62,8 +62,6 @@ jobs:
           python3 scripts/validate-index.py
           helm repo index _site --url https://axeprpr.github.io/helm-llm-repo --merge _site/index.yaml 2>/dev/null || \
             helm repo index _site --url https://axeprpr.github.io/helm-llm-repo
-          echo "=== INDEX ==="
-          cat _site/index.yaml
 
       - name: Push to gh-pages
         run: |
@@ -74,13 +72,3 @@ jobs:
           git add .
           git commit -m "Release charts $(date +'%Y-%m-%d %H:%M:%S')" || true
           git push -f https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD:gh-pages
-
-      - name: Trigger pages rebuild
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.repos.createPagesSite({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              build_type: 'workflow'
-            });
