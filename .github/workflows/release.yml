@@ -41,6 +41,9 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Install PyYAML
+        run: pip install --break-system-packages pyyaml
+
       - name: Helm lint
         run: |
           for chart in charts/*/; do
