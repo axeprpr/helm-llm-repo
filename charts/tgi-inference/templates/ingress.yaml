@@ -33,7 +33,7 @@ spec:
             pathType: {{ .pathType | default "Prefix" }}
             backend:
               service:
-                name: {{ $.Release.Name }}-vllm-inference
+                name: {{ include "tgi-inference.fullname" . }}
                 port:
                   number: {{ $.Values.service.port }}
           {{- end }}

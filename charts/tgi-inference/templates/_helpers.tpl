@@ -1,14 +1,14 @@
 {{/*
 Expand the name of the chart.
 */}}
-{{- define "vllm-inference.name" -}}
+{{- define "tgi-inference.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
 Create a default fully qualified app name.
 */}}
-{{- define "vllm-inference.fullname" -}}
+{{- define "tgi-inference.fullname" -}}
 {{- if .Values.fullnameOverride }}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
 {{- else }}
@@ -24,16 +24,16 @@ Create a default fully qualified app name.
 {{/*
 Create chart name and version as used by the chart label.
 */}}
-{{- define "vllm-inference.chart" -}}
+{{- define "tgi-inference.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
 Common labels
 */}}
-{{- define "vllm-inference.labels" -}}
-helm.sh/chart: {{ include "vllm-inference.chart" . }}
-{{ include "vllm-inference.selectorLabels" . }}
+{{- define "tgi-inference.labels" -}}
+helm.sh/chart: {{ include "tgi-inference.chart" . }}
+{{ include "tgi-inference.selectorLabels" . }}
 {{- if .Chart.AppVersion }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
@@ -43,15 +43,15 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{/*
 Selector labels
 */}}
-{{- define "vllm-inference.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "vllm-inference.name" . }}
+{{- define "tgi-inference.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "tgi-inference.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
 GPU tolerations based on gpuType
 */}}
-{{- define "vllm-inference.gpuTolerations" -}}
+{{- define "tgi-inference.gpuTolerations" -}}
 {{- if eq .Values.gpuType "nvidia" }}
 - key: "nvidia.com/gpu"
   operator: "Exists"
@@ -70,7 +70,7 @@ GPU tolerations based on gpuType
 {{/*
 Build vLLM command arguments
 */}}
-{{- define "vllm-inference.engineArgs" -}}
+{{- define "tgi-inference.engineArgs" -}}
 {{- $args := list }}
 {{- $args = append $args (printf "--model %s" .Values.model.name) }}
 {{- $args = append $args (printf "--trust-remote-code") }}

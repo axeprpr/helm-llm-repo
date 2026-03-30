@@ -24,7 +24,7 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
-      serviceAccountName: {{ .Values.serviceAccount.name | default (include "embedding-inference.fullname" .) }}
+      serviceAccountName: {{ .Values.serviceAccount.name | default "" }}
       securityContext:
         {{- toYaml .Values.securityContext | nindent 8 }}
       {{- if .Values.initContainers }}

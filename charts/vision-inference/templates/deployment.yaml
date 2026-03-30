@@ -31,7 +31,7 @@ spec:
       schedulerName: volcano
       {{- end }}
       {{- end }}
-      serviceAccountName: {{ .Values.serviceAccount.name | default (include "vision-inference.fullname" .) }}
+      serviceAccountName: {{ .Values.serviceAccount.name | default "" }}
       {{- if .Values.scheduler.annotations }}
       {{- toYaml .Values.scheduler.annotations | nindent 6 }}
       {{- end }}

@@ -1,9 +1,9 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "vllm-inference.fullname" . }}
+  name: {{ include "llamacpp-inference.fullname" . }}
   labels:
-    {{- include "vllm-inference.labels" . | nindent 4 }}
+    {{- include "llamacpp-inference.labels" . | nindent 4 }}
 {{- with .Values.podLabels }}
     {{- toYaml . | nindent 4 }}
 {{- end }}
@@ -11,7 +11,7 @@ spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      {{- include "vllm-inference.selectorLabels" . | nindent 6 }}
+      {{- include "llamacpp-inference.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       annotations:
@@ -19,7 +19,7 @@ spec:
         {{- toYaml .Values.podAnnotations | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "vllm-inference.selectorLabels" . | nindent 8 }}
+        {{- include "llamacpp-inference.selectorLabels" . | nindent 8 }}
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -34,7 +34,7 @@ spec:
       schedulerName: volcano
       {{- end }}
       {{- end }}
-      serviceAccountName: {{ .Values.serviceAccount.name | default (include "vllm-inference.fullname" .) }}
+      serviceAccountName: {{ .Values.serviceAccount.name | default "" }}
       {{- if .Values.scheduler.annotations }}
       {{- toYaml .Values.scheduler.annotations | nindent 6 }}
       {{- end }}
@@ -66,13 +66,13 @@ spec:
             # Multi-node setup
             apt-get update && apt-get install -y ssh-client
             {{- end }}
-            vllm serve {{ include "vllm-inference.engineArgs" . | indent 12 }}
+            server {{ include "llamacpp-inference.engineArgs" . | indent 12 }}
         {{- else }}
         command:
           - /bin/bash
           - -c
           - |
-            vllm serve {{ include "vllm-inference.engineArgs" . | indent 12 }}
+            server {{ include "llamacpp-inference.engineArgs" . | indent 12 }}
         {{- end }}
         ports:
         - name: http
@@ -135,7 +135,7 @@ spec:
       {{- if .Values.persistence.enabled }}
       - name: model-cache
         persistentVolumeClaim:
-          claimName: {{ include "vllm-inference.fullname" . }}-model-cache
+          claimName: {{ include "llamacpp-inference.fullname" . }}-model-cache
       {{- end }}
       {{- if .Values.volumes }}
       {{- toYaml .Values.volumes | nindent 6 }}
@@ -148,7 +148,7 @@ spec:
       affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- $tolerations := concat (include "vllm-inference.gpuTolerations" . | fromYamlArray | default list) .Values.tolerations }}
+      {{- $tolerations := concat (include "llamacpp-inference.gpuTolerations" . | fromYamlArray | default list) .Values.tolerations }}
       {{- if $tolerations }}
       tolerations:
         {{- toYaml $tolerations | nindent 8 }}
@@ -158,14 +158,14 @@ spec:
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: {{ include "vllm-inference.fullname" . }}
+  name: {{ include "llamacpp-inference.fullname" . }}
   labels:
-    {{- include "vllm-inference.labels" . | nindent 4 }}
+    {{- include "llamacpp-inference.labels" . | nindent 4 }}
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: {{ include "vllm-inference.fullname" . }}
+    name: {{ include "llamacpp-inference.fullname" . }}
   minReplicas: {{ .Values.autoscaling.minReplicas }}
   maxReplicas: {{ .Values.autoscaling.maxReplicas }}
   metrics:

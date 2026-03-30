@@ -1,9 +1,9 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "vllm-inference.fullname" . }}
+  name: {{ include "ollama-inference.fullname" . }}
   labels:
-    {{- include "vllm-inference.labels" . | nindent 4 }}
+    {{- include "ollama-inference.labels" . | nindent 4 }}
   {{- with .Values.service.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
@@ -16,15 +16,15 @@ spec:
     protocol: TCP
     name: http
   selector:
-    {{- include "vllm-inference.selectorLabels" . | nindent 4 }}
+    {{- include "ollama-inference.selectorLabels" . | nindent 4 }}
 ---
 {{- if .Values.persistence.enabled }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ include "vllm-inference.fullname" . }}-model-cache
+  name: {{ include "ollama-inference.fullname" . }}-model-cache
   labels:
-    {{- include "vllm-inference.labels" . | nindent 4 }}
+    {{- include "ollama-inference.labels" . | nindent 4 }}
 spec:
   accessModes:
     - ReadWriteMany
