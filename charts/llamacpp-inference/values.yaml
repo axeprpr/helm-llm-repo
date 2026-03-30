@@ -89,12 +89,13 @@ scheduler:
   hami:
     nodeSchedulerPolicy: ""
     gpuSchedulerPolicy: ""
-    deviceMemoryFraction: ""
+    gpuSharePercent: ""
 
 # GPU hardware-specific resource overrides
-# CPU mode (gpuType=none): no GPU, pure CPU
+# These are APPLIED based on gpuType. UI should guide users.
+# Example: gpuType=nvidia → apply nvidia limits
 resources:
-  # NVIDIA/AMD GPU mode
+  # NVIDIA GPU mode (T4/A10G/A100/H100/H200)
   nvidia:
     limits:
       nvidia.com/gpu: "1"
@@ -103,7 +104,7 @@ resources:
     requests:
       cpu: "2"
       memory: "8Gi"
-  # AMD ROCm mode
+  # AMD ROCm GPU mode (MI210/MI250X/MI300X)
   amd:
     limits:
       amd.com/gpu: "1"
@@ -112,7 +113,7 @@ resources:
     requests:
       cpu: "2"
       memory: "8Gi"
-  # Vulkan / Intel / MUSA mode
+  # Vulkan / Intel / MUSA mode (cross-vendor GPU)
   vulkan:
     limits:
       memory: "12Gi"
@@ -120,7 +121,7 @@ resources:
     requests:
       cpu: "2"
       memory: "4Gi"
-  # CPU-only mode
+  # CPU-only mode (no GPU)
   none:
     limits:
       cpu: "8"
@@ -128,13 +129,6 @@ resources:
     requests:
       cpu: "4"
       memory: "16Gi"
-  # Active limits (derived from gpuType above)
-  limits:
-    memory: "16Gi"
-    cpu: "4"
-  requests:
-    cpu: "2"
-    memory: "8Gi"
 
 # Node selector
 nodeSelector: {}

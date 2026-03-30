@@ -79,8 +79,15 @@ spec:
           {{- toYaml .Values.livenessProbe | nindent 10 }}
         readinessProbe:
           {{- toYaml .Values.readinessProbe | nindent 10 }}
+        {{- $rt := dict 
+          "nvidia" .Values.resources.nvidia
+          "amd" .Values.resources.amd
+          "vulkan" .Values.resources.vulkan
+          "none" .Values.resources.none
+        }}
+        {{- $selected := index $rt .Values.gpuType | default .Values.resources.nvidia }}
         resources:
-          {{- toYaml .Values.resources | nindent 10 }}
+          {{- toYaml $selected | nindent 10 }}
         volumeMounts:
         {{- if .Values.persistence.enabled }}
         - name: model-cache

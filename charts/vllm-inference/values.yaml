@@ -179,6 +179,16 @@ podDisruptionBudget:
 # Reference: GPUStack model-catalog.yaml (87 model sets)
 modelCatalog:
   enabled: false
+  # Selected preset: auto-fills recommended engine flags when model matches
+  # Options:
+  #   qwen2.5-7b-chat    - Qwen2.5-7B-Instruct
+  #   qwen2.5-72b-chat   - Qwen2.5-72B-Instruct
+  #   llama-70b-chat      - Llama-3.1-70B-Instruct
+  #   deepseek-r1-7b     - DeepSeek-R1-Distill-Qwen-7B (with reasoningParser)
+  #   bge-m3-embed        - BAAI/bge-m3 (embedding task)
+  #   qwen2vl-7b-vision   - Qwen/Qwen2-VL-7B-Instruct
+  # When set, chart will auto-configure engine flags from catalog
+  selectedPreset: ""
   # Includes: chat-models.yaml, embedding-models.yaml, vision-models.yaml
   # Use: kubectl get configmap -l app.kubernetes.io/component=model-catalog
 
