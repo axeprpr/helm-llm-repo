@@ -20,6 +20,264 @@
 
 ---
 
+---
+
+## 🏗️ 部署架构
+
+### 集群组件要求
+
+部署 LLM 推理服务前，你的 Kubernetes 集群需要满足以下要求：
+
+#### 基础要求
+
+| 组件 | 要求 | 说明 |
+|------|------|------|
+| Kubernetes | ≥ 1.27 | 推荐 1.29+ |
+| Helm | ≥ 3.12 | |
+| GPU 驱动 | NVIDIA Driver ≥ 525 / AMD ROCm 5.4+ | |
+| 存储 (PVC) | ReadWriteMany (多副本) 或 ReadWriteOnce (单副本) | 取决于 CSI 能力 |
+
+#### GPU 调度选项（选其一或组合）
+
+| 方案 | 组件 | 适用场景 | 推荐度 |
+|------|------|---------|--------|
+| 原生调度 | kube-scheduler | 单卡 / 单机多卡，简单场景 | ⭐ 起步 |
+| **HAMi** | HAMi (Xiaohongshu) | GPU 共享 (1 张卡跑多个推理)、显存虚拟化 | ⭐⭐⭐ 生产 |
+| **Volcano** | Volcano (Huawei) | 批量任务、Gang 调度、多机多卡、队列管理 | ⭐⭐⭐ 生产 |
+| **HAMi + Volcano** | 两者叠加 | 既要 GPU 共享又要 Gang 调度，最大集群效率 | ⭐⭐⭐⭐ 高级 |
+
+---
+
+### Volcano + HAMi 组合使用（推荐生产环境）
+
+**两者不冲突，可以同时安装、协同工作。**
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Kubernetes Cluster                    │
+│                                                          │
+│  ┌─────────────────┐    ┌─────────────────────────────┐ │
+│  │ Volcano Scheduler│◄───│ HAMi (GPU virtualization)  │ │
+│  │  (gang scheduling │    │  (GPU share / vGPU)       │ │
+│  │   queue, priority)│   │  (CUDA_VISIBLE_DEVICES      │ │
+│  └────────┬────────┘    └──────────────┬──────────────┘ │
+│           │                            │                 │
+│           │     ┌──────────────────────┘                 │
+│           ▼     ▼                                         │
+│  ┌──────────────────────────────────────────────┐        │
+│  │     PodGroup (Volcano) = Gang of Pods        │        │
+│  │  ┌─────────┐  ┌─────────┐  ┌─────────┐       │        │
+│  │  │ Worker 0│  │ Worker 1│  │ Worker N│       │        │
+│  │  │ (HAMi)  │  │ (HAMi)  │  │ (HAMi)  │       │        │
+│  │  │ GPU share│  │ GPU share│  │ GPU share│       │        │
+│  │  └─────────┘  └─────────┘  └─────────┘       │        │
+│  └──────────────────────────────────────────────┘        │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Volcano 负责：** Pod 整体调度（要调度就一起调度，不能单独调度）、队列优先级、资源预留
+**HAMi 负责：** 每张 GPU 卡的显存虚拟化、共享使用、GPU 分配
+
+#### 安装前提
+
+```bash
+# 1. 安装 Volcano（gang 调度 + 队列）
+# 参见 https://volcano.sh/en/docs/installation/
+kubectl apply -f https://raw.githubusercontent.com/volcano-sh/volcano/v1.8.0/installer/volcano-development.yaml
+
+# 2. 安装 HAMi（GPU 共享）
+# 参见 https://project-hami.io/docs/installation/how-to-install/
+helm install hami openhami -n hami-system --create-namespace \
+  https://hami-artifact.cn-hangzhou.oss.aliyun-inc.com/c7n/helm-charts/openhami-0.0.1.tgz
+# 或从 GitHub release 安装
+# kubectl apply -f https://raw.githubusercontent.com/Project-HAMi/HAMi/v2.0.0/deploy/hami-device-plugin.yaml
+```
+
+#### 集群级 Volcano + HAMi 配置
+
+```yaml
+# volcano-hami-config.yaml - 应用到 volcano-scheduler
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: volcano-scheduler-config
+  namespace: volcano-system
+data:
+  volcano调度器配置.conf: |
+    # HAMi 集成：Volcano 调度时识别 HAMi 虚拟 GPU
+    enabledDentOptions:
+      - name: nvidia.com/gpu
+        memoryFraction: true
+        memoryVolumeSize: "16Gi"
+    actions: "enqueue, allocate, reclaim"
+    tiers:
+      - level: 0
+        name: hami
+        policies:
+          - name: hamiallocation
+            enableNUMA: true
+      - level: 1
+        name: normal
+        policies:
+          - name: drf
+          - name: priority
+          - name: gang
+          - name: conformance
+```
+
+```bash
+kubectl apply -f volcano-hami-config.yaml
+# 重启 volcano-scheduler pod 生效
+kubectl rollout restart deployment volcano-scheduler -n volcano-system
+```
+
+#### Volcano 队列配置
+
+```yaml
+# queues.yaml
+apiVersion: scheduling.volcano.sh/v1beta1
+kind: Queue
+metadata:
+  name: inference-queue
+spec:
+  weight: 10
+  reclaimable: true
+  minResources:
+    nvidia.com/gpu: "4"
+---
+apiVersion: scheduling.volcano.sh/v1beta1
+kind: Queue
+metadata:
+  name: batch-queue
+spec:
+  weight: 5
+  reclaimable: true
+  minResources:
+    nvidia.com/gpu: "0"
+```
+
+```bash
+kubectl apply -f queues.yaml
+kubectl vc queue list
+```
+
+#### Chart 使用示例：Volcano + HAMi 同时启用
+
+```bash
+# 场景：DeepSeek-V3 多机推理，Volcano Gang 调度 + HAMi GPU 共享
+# 8 机 × 8 卡，每卡共享给 2 个推理实例
+
+helm install deepseek-volcano-hami llm-center/vllm-inference \
+  \
+  # === 模型配置 ===
+  --set model.name=deepseek-ai/DeepSeek-V3 \
+  \
+  # === Volcano Gang 调度 ===
+  --set scheduler.type=volcano \
+  --set scheduler.volcano.queueName=inference-queue \
+  --set scheduler.volcano.createPodGroup=true \
+  --set scheduler.volcano.groupMinMember=8 \
+  --set scheduler.volcano.minResources.cpu=128 \
+  --set scheduler.volcano.minResources.memory=512Gi \
+  --set scheduler.volcano.minResources.nvidia.com/gpu=8 \
+  \
+  # === HAMi GPU 共享 ===
+  --set scheduler.hami.nodeSchedulerPolicy=bind \
+  --set scheduler.hami.gpuSchedulerPolicy=share \
+  --set scheduler.hami.deviceMemoryFraction=0.5 \
+  \
+  # === 资源请求 ===
+  --set resources.limits.nvidia.com/gpu=8 \
+  --set engine.tensorParallelSize=8 \
+  --set engine.pipelineParallelSize=8 \
+  \
+  # === 生产配置 ===
+  --set replicaCount=8 \
+  --set terminationGracePeriodSeconds=300 \
+  --set priorityClassName=high-priority \
+  --set podDisruptionBudget.enabled=true \
+  --set podDisruptionBudget.maxUnavailable=1 \
+  --set shm.enabled=true \
+  --set shm.sizeLimit=2Gi
+```
+
+#### Chart 使用示例：仅 Volcano（批量推理）
+
+```bash
+# Volcano 队列调度，无 HAMi
+helm install batch-qwen llm-center/vllm-inference \
+  --set model.name=Qwen/Qwen2.5-72B-Instruct \
+  --set scheduler.type=volcano \
+  --set scheduler.volcano.queueName=batch-queue \
+  --set scheduler.volcano.createPodGroup=true \
+  --set scheduler.volcano.groupMinMember=2 \
+  --set scheduler.volcano.minResources.nvidia.com/gpu=8 \
+  --set engine.tensorParallelSize=4 \
+  --set replicaCount=2
+```
+
+#### Chart 使用示例：仅 HAMi（GPU 共享）
+
+```bash
+# HAMi 显存虚拟化，1 卡分给 2 个实例共用
+helm install shared-qwen llm-center/vllm-inference \
+  --set model.name=Qwen/Qwen2.5-7B-Instruct \
+  --set scheduler.type=hami \
+  --set scheduler.hami.nodeSchedulerPolicy=bind \
+  --set scheduler.hami.gpuSchedulerPolicy=share \
+  --set scheduler.hami.deviceMemoryFraction=0.5 \
+  --set replicaCount=2 \
+  --set resources.limits.nvidia.com/gpu=1
+```
+
+---
+
+### NVIDIA GPU Operator 部署
+
+生产集群建议安装 GPU Operator：
+
+```bash
+# 添加 NVIDIA Helm repo
+helm repo add nvidia https://helm.ngc.nvidia.com/nvidia \
+  && helm repo update
+
+# 安装 GPU Operator（自动安装 device-plugin / node-feature-discovery / DCGM exporter）
+helm install gpu-operator nvidia/gpu-operator \
+  --namespace gpu-operator --create-namespace \
+  --set devicePlugin.config.name=default \
+  --set driver.enabled=false  # 已有驱动时跳过驱动安装
+```
+
+---
+
+### Prometheus + ServiceMonitor 监控配置
+
+```bash
+# 安装 Prometheus Operator（如果没有）
+helm install prometheus prometheus-community/kube-prometheus-stack \
+  --namespace monitoring --create-namespace
+
+# 启用 ServiceMonitor（自动发现）
+helm install vllm llm-center/vllm-inference \
+  --set model.name=Qwen/Qwen2.5-7B-Instruct \
+  --set metrics.enabled=true \
+  --set metrics.serviceMonitor.enabled=true \
+  --set metrics.serviceMonitor.interval=30s
+```
+
+---
+
+### 存储配置建议
+
+| 场景 | PVC 类型 | 存储类推荐 |
+|------|---------|-----------|
+| 单副本模型缓存 | ReadWriteOnce | `fast-ssd` / `gp3` / `local-path` |
+| 多副本共享模型 | ReadWriteMany | `nfs` / `cephfs` / `juicefs` |
+| Embedding 模型持久化 | ReadWriteOnce | `fast-ssd` |
+| Ollama 本地模型库 | ReadWriteOnce | `fast-ssd` |
+| GGUF 文件 | ReadWriteOnce | `local-path` (hostPath) |
+
+
 ## 快速安装（通用）
 
 ```bash
@@ -44,6 +302,23 @@ curl http://qwen-vllm-inference:8000/v1/chat/completions \
 ```
 
 ---
+
+
+
+## 📋 集群依赖速查表
+
+| 功能 | 依赖组件 | 安装方式 |
+|------|---------|---------|
+| NVIDIA GPU 推理 | NVIDIA GPU Operator 或 device-plugin | `helm install gpu-operator nvidia/gpu-operator` |
+| HAMi GPU 共享 | HAMi (Project-HAMi) | `kubectl apply -f hami-deploy.yaml` |
+| Volcano Gang 调度 | Volcano Scheduler + CRD | `kubectl apply -f volcano-installer.yaml` |
+| Volcano + HAMi 组合 | 两者同时安装 | 见上方「组合使用」章节 |
+| Prometheus 监控 | Prometheus Operator | `helm install kube-prometheus-stack prometheus-community/kube-prometheus-stack` |
+| ServiceMonitor | Prometheus Operator CRD | `--set metrics.serviceMonitor.enabled=true` |
+| ReadWriteMany 存储 | NFS / CephFS / JuiceFS | 对应 CSI 驱动 |
+| 模型运行时下载 | Egress 到 HuggingFace + PVC | `--set persistence.enabled=true` |
+
+> **提示：** 生产环境强烈建议同时安装 Volcano + HAMi，前者保证 Gang 调度，后者最大化 GPU 利用率。
 
 ## 场景一：单机单卡（最常见）
 

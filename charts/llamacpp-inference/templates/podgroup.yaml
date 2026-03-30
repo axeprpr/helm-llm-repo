@@ -1,0 +1,20 @@
+{{- if and (eq .Values.scheduler.type "volcano") .Values.scheduler.volcano.createPodGroup }}
+apiVersion: scheduling.volcano.sh/v1beta1
+kind: PodGroup
+metadata:
+  name: {{ include "llamacpp-inference.fullname" . }}
+  labels:
+    {{- include "llamacpp-inference.labels" . | nindent 4 }}
+spec:
+  minMember: {{ .Values.scheduler.volcano.groupMinMember | default .Values.replicaCount }}
+  {{- if .Values.scheduler.volcano.queueName }}
+  queue: {{ .Values.scheduler.volcano.queueName | quote }}
+  {{- end }}
+  {{- if .Values.scheduler.volcano.minResources }}
+  minResources:
+    {{- toYaml .Values.scheduler.volcano.minResources | nindent 4 }}
+  {{- end }}
+  {{- if .Values.priorityClassName }}
+  priorityClassName: {{ .Values.priorityClassName | quote }}
+  {{- end }}
+{{- end }}

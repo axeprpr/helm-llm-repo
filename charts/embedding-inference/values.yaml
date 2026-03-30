@@ -36,6 +36,21 @@ engine:
   # Enable prefix caching
   enablePrefixCaching: false
 
+# Scheduler: native | hami (GPU sharing) | volcano (gang scheduling)
+scheduler:
+  type: native
+  name: ""
+  annotations: {}
+  volcano:
+    queueName: ""
+    groupMinMember: 0
+    createPodGroup: false
+    minResources: {}
+  hami:
+    nodeSchedulerPolicy: ""
+    gpuSchedulerPolicy: ""
+    deviceMemoryFraction: ""
+
 # GPU hardware type
 gpuType: nvidia
 # Supported: nvidia, ascend, amd, intel
@@ -54,6 +69,17 @@ resources:
 nodeSelector: {}
 tolerations: []
 affinity: {}
+
+# Prometheus Operator integration
+metrics:
+  enabled: true
+  path: /metrics
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    scrapeTimeout: 10s
+    labels: {}
+    annotations: {}
 
 # Service configuration
 service:
@@ -85,15 +111,39 @@ autoscaling:
   # Custom metric for embedding request rate
   targetQPSPerReplica: 50
 
+# /dev/shm for NCCL shared memory
+shm:
+  enabled: false
+  sizeLimit: 1Gi
+
 # Persistence (for model cache)
 persistence:
   enabled: false
   storageClass: ""
   size: 50Gi
 
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: false
+  minAvailable: ""
+  maxUnavailable: 1
+
 # Pod annotations
 podAnnotations: {}
 podLabels: {}
+
+# Security context
+# Runtime class
+runtimeClassName: ""
+
+# Priority class
+priorityClassName: ""
+
+# Termination grace period
+terminationGracePeriodSeconds: 60
+
+# Topology spread
+topologySpreadConstraints: []
 
 # Security context
 securityContext:

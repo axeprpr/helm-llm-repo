@@ -75,6 +75,17 @@ nodeSelector: {}
 tolerations: []
 affinity: {}
 
+# Prometheus metrics
+metrics:
+  enabled: true
+  path: /metrics
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    scrapeTimeout: 10s
+    labels: {}
+    annotations: {}
+
 # Service configuration
 service:
   type: ClusterIP
@@ -115,6 +126,11 @@ autoscaling:
   targetCPUUtilizationPercentage: 80
   targetMemoryUtilizationPercentage: 80
 
+# /dev/shm for NCCL shared memory
+shm:
+  enabled: false
+  sizeLimit: 1Gi
+
 # Persistence (for model cache)
 persistence:
   enabled: false
@@ -122,9 +138,21 @@ persistence:
   size: 50Gi
   mountPath: /root/.cache/huggingface
 
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: false
+  minAvailable: ""
+  maxUnavailable: 1
+
 # Pod annotations
 podAnnotations: {}
 podLabels: {}
+
+# Runtime class
+runtimeClassName: ""
+priorityClassName: ""
+terminationGracePeriodSeconds: 60
+topologySpreadConstraints: []
 
 # Security context
 securityContext:

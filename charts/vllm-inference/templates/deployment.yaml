@@ -4,6 +4,10 @@ metadata:
   name: {{ include "vllm-inference.fullname" . }}
   labels:
     {{- include "vllm-inference.labels" . | nindent 4 }}
+  {{- if and (eq .Values.scheduler.type "volcano") (gt (int .Values.scheduler.volcano.groupMinMember) 0) }}
+  annotations:
+    scheduling.volcano.sh/group-min-member: {{ .Values.scheduler.volcano.groupMinMember | quote }}
+  {{- end }}
 {{- with .Values.podLabels }}
     {{- toYaml . | nindent 4 }}
 {{- end }}
@@ -14,30 +18,29 @@ spec:
       {{- include "vllm-inference.selectorLabels" . | nindent 6 }}
   template:
     metadata:
+      {{- $podAnnotations := include "vllm-inference.podAnnotations" . }}
+      {{- if $podAnnotations }}
       annotations:
-        {{- if .Values.podAnnotations }}
-        {{- toYaml .Values.podAnnotations | nindent 8 }}
-        {{- end }}
+        {{- $podAnnotations | nindent 8 }}
+      {{- end }}
       labels:
         {{- include "vllm-inference.selectorLabels" . | nindent 8 }}
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
-      {{- with .Values.scheduler.annotations }}
-      scheduler.alpha.kubernetes.io/critical-pod: ""
+      {{- $schedulerName := include "vllm-inference.schedulerName" . | trim }}
+      {{- if $schedulerName }}
+      schedulerName: {{ $schedulerName }}
       {{- end }}
-      {{- if .Values.scheduler.type }}
-      {{- if eq .Values.scheduler.type "hami" }}
-      schedulerName: hami-scheduler
-      {{- else if eq .Values.scheduler.type "volcano" }}
-      schedulerName: volcano
+      serviceAccountName: {{ include "vllm-inference.serviceAccountName" . }}
+      {{- with .Values.runtimeClassName }}
+      runtimeClassName: {{ . | quote }}
       {{- end }}
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . | quote }}
       {{- end }}
-      serviceAccountName: {{ .Values.serviceAccount.name | default "" }}
-      {{- if .Values.scheduler.annotations }}
-      {{- toYaml .Values.scheduler.annotations | nindent 6 }}
-      {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
       securityContext:
         {{- toYaml .Values.securityContext | nindent 8 }}
       {{- if .Values.initContainers }}
@@ -80,9 +83,16 @@ spec:
           protocol: TCP
         env:
         - name: HF_HOME
-          value: "/model"
+          value: {{ .Values.persistence.mountPath | quote }}
         - name: MODEL_NAME
           value: {{ .Values.model.name | quote }}
+        {{- with .Values.envFrom }}
+        envFrom:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.extraEnv }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
         {{- if .Values.distributed.enabled }}
         - name: VLLM_RANK
           valueFrom:
@@ -102,7 +112,11 @@ spec:
         volumeMounts:
         {{- if .Values.persistence.enabled }}
         - name: model-cache
-          mountPath: /root/.cache/huggingface
+          mountPath: {{ .Values.persistence.mountPath }}
+        {{- end }}
+        {{- if .Values.shm.enabled }}
+        - name: shm
+          mountPath: /dev/shm
         {{- end }}
         {{- if .Values.volumeMounts }}
         {{- toYaml .Values.volumeMounts | nindent 8 }}
@@ -137,8 +151,18 @@ spec:
         persistentVolumeClaim:
           claimName: {{ include "vllm-inference.fullname" . }}-model-cache
       {{- end }}
+      {{- if .Values.shm.enabled }}
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: {{ .Values.shm.sizeLimit }}
+      {{- end }}
       {{- if .Values.volumes }}
       {{- toYaml .Values.volumes | nindent 6 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

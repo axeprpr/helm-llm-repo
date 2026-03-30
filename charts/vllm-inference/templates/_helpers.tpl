@@ -48,6 +48,53 @@ app.kubernetes.io/name: {{ include "vllm-inference.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
+{{- define "vllm-inference.serviceAccountName" -}}
+{{- if .Values.serviceAccount.create }}
+{{- default (include "vllm-inference.fullname" .) .Values.serviceAccount.name }}
+{{- else }}
+{{- default "default" .Values.serviceAccount.name }}
+{{- end }}
+{{- end }}
+
+{{- define "vllm-inference.schedulerName" -}}
+{{- if .Values.scheduler.name }}
+{{- .Values.scheduler.name }}
+{{- else if eq .Values.scheduler.type "hami" }}
+hami-scheduler
+{{- else if eq .Values.scheduler.type "volcano" }}
+volcano
+{{- end }}
+{{- end }}
+
+{{- define "vllm-inference.podAnnotations" -}}
+{{- $annotations := dict -}}
+{{- if .Values.podAnnotations }}
+{{- range $k, $v := .Values.podAnnotations }}
+{{- $_ := set $annotations $k $v }}
+{{- end }}
+{{- end }}
+{{- if .Values.scheduler.annotations }}
+{{- range $k, $v := .Values.scheduler.annotations }}
+{{- $_ := set $annotations $k $v }}
+{{- end }}
+{{- end }}
+{{- if and (eq .Values.scheduler.type "volcano") .Values.scheduler.volcano.queueName }}
+{{- $_ := set $annotations "scheduling.volcano.sh/queue-name" .Values.scheduler.volcano.queueName }}
+{{- end }}
+{{- if and (eq .Values.scheduler.type "volcano") .Values.scheduler.volcano.createPodGroup }}
+{{- $_ := set $annotations "scheduling.k8s.io/group-name" (include "vllm-inference.fullname" .) }}
+{{- end }}
+{{- if and (eq .Values.scheduler.type "hami") .Values.scheduler.hami.nodeSchedulerPolicy }}
+{{- $_ := set $annotations "hami.io/node-scheduler-policy" .Values.scheduler.hami.nodeSchedulerPolicy }}
+{{- end }}
+{{- if and (eq .Values.scheduler.type "hami") .Values.scheduler.hami.gpuSchedulerPolicy }}
+{{- $_ := set $annotations "hami.io/gpu-scheduler-policy" .Values.scheduler.hami.gpuSchedulerPolicy }}
+{{- end }}
+{{- if gt (len $annotations) 0 }}
+{{- toYaml $annotations }}
+{{- end }}
+{{- end }}
+
 {{/*
 GPU tolerations based on gpuType
 */}}

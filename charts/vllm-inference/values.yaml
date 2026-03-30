@@ -53,8 +53,18 @@ distributed:
 scheduler:
   # native, hami (Xiaohongshu), volcano (Huawei)
   type: native
+  # Explicit scheduler name override
+  name: ""
   # Scheduler-specific annotations
   annotations: {}
+  volcano:
+    queueName: ""
+    groupMinMember: 0
+    createPodGroup: false
+    minResources: {}
+  hami:
+    nodeSchedulerPolicy: ""
+    gpuSchedulerPolicy: ""
 
 # GPU hardware type
 gpuType: nvidia
@@ -126,6 +136,21 @@ persistence:
 podAnnotations: {}
 podLabels: {}
 
+# Extra environment
+extraEnv: []
+envFrom: []
+
+# Runtime and disruption controls
+runtimeClassName: ""
+priorityClassName: ""
+terminationGracePeriodSeconds: 120
+topologySpreadConstraints: []
+
+# Shared memory for NCCL / tensor parallelism
+shm:
+  enabled: true
+  sizeLimit: 1Gi
+
 # Security context
 securityContext:
   runAsUser: 0
@@ -140,9 +165,26 @@ sidecars: []
 
 # Service account
 serviceAccount:
-  create: false
+  create: true
   name: ""
   annotations: {}
+
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: false
+  minAvailable: ""
+  maxUnavailable: 1
+
+# Prometheus Operator integration
+metrics:
+  enabled: true
+  path: /metrics
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    scrapeTimeout: 10s
+    labels: {}
+    annotations: {}
 
 # Volumes and volume mounts
 volumes: []
