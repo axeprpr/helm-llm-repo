@@ -26,10 +26,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Checkout gh-pages
+      - name: Prepare gh-pages dir
         run: |
-          git clone --branch gh-pages --depth 1 https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git _site 2>/dev/null || true
-          mkdir -p _site
+          rm -rf _site
+          git clone --branch gh-pages --depth 1 https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git _site 2>/dev/null || mkdir _site
 
       - name: Set up Helm
         uses: azure/setup-helm@v4
@@ -52,7 +52,6 @@ jobs:
 
       - name: Package charts
         run: |
-          mkdir -p _site
           for chart in charts/*/; do
             helm package "${chart}" --destination _site/
           done
@@ -63,17 +62,25 @@ jobs:
           python3 scripts/validate-index.py
           helm repo index _site --url https://axeprpr.github.io/helm-llm-repo --merge _site/index.yaml 2>/dev/null || \
             helm repo index _site --url https://axeprpr.github.io/helm-llm-repo
+          echo "=== INDEX ==="
+          cat _site/index.yaml
 
-      - name: Deploy to GitHub Pages
+      - name: Push to gh-pages
         run: |
           cd _site
           git init
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          git add *.tgz index.yaml
-          git commit -m "Release charts $(date +%Y-%m-%d)"
+          git add .
+          git commit -m "Release charts $(date +'%Y-%m-%d %H:%M:%S')" || true
           git push -f https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD:gh-pages
 
-      - name: Deploy
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Trigger pages rebuild
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.repos.createPagesSite({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              build_type: 'workflow'
+            });
