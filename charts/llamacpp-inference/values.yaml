@@ -5,7 +5,7 @@ replicaCount: 1
 image:
   repository: ghcr.io/ggerganov/llama.cpp
   pullPolicy: IfNotPresent
-  tag: "server"
+  tag: "b8580"
 
 # Model configuration
 model:

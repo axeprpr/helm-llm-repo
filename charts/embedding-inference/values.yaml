@@ -3,9 +3,9 @@
 replicaCount: 1
 
 image:
-  repository: ghcr.io/vllm-project/vllm
+  repository: ghcr.io/vllm-project/vllm-openai
   pullPolicy: IfNotPresent
-  tag: "0.4.0"
+  tag: "0.18.0"
 
 # Model configuration
 model:

@@ -3,9 +3,9 @@
 replicaCount: 1
 
 image:
-  repository: ghcr.io/vllm-project/vllm
+  repository: ghcr.io/vllm-project/vllm-openai
   pullPolicy: IfNotPresent
-  tag: "0.6.0"  # v0.6+ has comprehensive vision support
+  tag: "0.18.0"  # v0.6+ has comprehensive vision support
 
 # Model configuration
 model:
