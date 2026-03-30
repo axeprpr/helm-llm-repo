@@ -1,0 +1,49 @@
+Vision Multimodal Inference Chart deployed!
+
+**API Endpoints:**
+- `/v1/chat/completions` - Chat with images (multipart messages)
+- `/v1/completions` - Text completion
+- `/health` - Health check
+
+**Usage examples:**
+
+# Chat with image (URL)
+curl -X POST http://{{ include "vision-inference.fullname" . }}.{{ .Release.Namespace }}:{{ .Values.service.port }}/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "{{ .Values.model.name }}",
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {"type": "text", "text": "Describe this image:"},
+          {"type": "image_url", "image_url": {"url": "https://example.com/image.jpg"}}
+        ]
+      }
+    ]
+  }'
+
+# Chat with base64 image
+curl -X POST http://{{ include "vision-inference.fullname" . }}.{{ .Release.Namespace }}:{{ .Values.service.port }}/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "{{ .Values.model.name }}",
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {"type": "text", "text": "What'\''s in this image?"},
+          {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,/9j/4AAQSkZ..."}}
+        ]
+      }
+    ]
+  }'
+
+**Recommended models:**
+- LLaVA: llava-hf/llava-1.5-7b-hf, llava-hf/llava-1.5-13b-hf
+- Qwen-VL: Qwen/Qwen2-VL-7B-Instruct, Qwen/Qwen2-VL-72B-Instruct
+- InternVL: OpenGVLab/InternVL2-8B, OpenGVLab/InternVL2-26B
+- Phi-3.5-vision: microsoft/Phi-3.5-vision-instruct
+
+**Tip:** Vision models need more GPU memory. Set gpuMemoryUtilization=0.80-0.85
+for stability, and ensure you have enough VRAM for your model.

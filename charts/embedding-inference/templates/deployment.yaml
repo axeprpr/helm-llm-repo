@@ -1,0 +1,140 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "embedding-inference.fullname" . }}
+  labels:
+    {{- include "embedding-inference.labels" . | nindent 4 }}
+{{- with .Values.podLabels }}
+    {{- toYaml . | nindent 4 }}
+{{- end }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "embedding-inference.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        {{- if .Values.podAnnotations }}
+        {{- toYaml .Values.podAnnotations | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "embedding-inference.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name | default (include "embedding-inference.fullname" .) }}
+      securityContext:
+        {{- toYaml .Values.securityContext | nindent 8 }}
+      {{- if .Values.initContainers }}
+      initContainers:
+        {{- range $i, $c := .Values.initContainers }}
+        - name: {{ $c.name }}
+          image: {{ $c.image }}
+          command: {{ $c.command }}
+          args: {{ $c.args }}
+          volumeMounts:
+            {{- toYaml $c.volumeMounts | nindent 12 }}
+          resources:
+            {{- toYaml $c.resources | nindent 12 }}
+        {{- end }}
+      {{- end }}
+      containers:
+      - name: embedding
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command:
+          - /bin/bash
+          - -c
+          - |
+            vllm serve {{ include "embedding-inference.engineArgs" . | indent 12 }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.engine.port }}
+          protocol: TCP
+        env:
+        - name: HF_HOME
+          value: "/model"
+        - name: MODEL_NAME
+          value: {{ .Values.model.name | quote }}
+        livenessProbe:
+          {{- toYaml .Values.livenessProbe | nindent 10 }}
+        readinessProbe:
+          {{- toYaml .Values.readinessProbe | nindent 10 }}
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+        volumeMounts:
+        {{- if .Values.persistence.enabled }}
+        - name: model-cache
+          mountPath: /root/.cache/huggingface
+        {{- end }}
+        {{- if .Values.volumeMounts }}
+        {{- toYaml .Values.volumeMounts | nindent 8 }}
+        {{- end }}
+      {{- if .Values.sidecars }}
+      {{- range .Values.sidecars }}
+      - name: {{ .name }}
+        image: {{ .image }}
+        {{- if .command }}command: {{ .command }}{{- end }}
+        {{- if .args }}args: {{ .args }}{{- end }}
+        {{- if .env }}env: {{- toYaml .env | nindent 8 }}{{- end }}
+        {{- if .volumeMounts }}volumeMounts: {{- toYaml .volumeMounts | nindent 8 }}{{- end }}
+        {{- if .resources }}resources: {{- toYaml .resources | nindent 8 }}{{- end }}
+      {{- end }}
+      {{- end }}
+      volumes:
+      {{- if .Values.persistence.enabled }}
+      - name: model-cache
+        persistentVolumeClaim:
+          claimName: {{ include "embedding-inference.fullname" . }}-model-cache
+      {{- end }}
+      {{- if .Values.volumes }}
+      {{- toYaml .Values.volumes | nindent 6 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- $tolerations := concat (include "embedding-inference.gpuTolerations" . | fromYamlArray | default list) .Values.tolerations }}
+      {{- if $tolerations }}
+      tolerations:
+        {{- toYaml $tolerations | nindent 8 }}
+      {{- end }}
+---
+{{- if .Values.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "embedding-inference.fullname" . }}
+  labels:
+    {{- include "embedding-inference.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "embedding-inference.fullname" . }}
+  minReplicas: {{ .Values.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.autoscaling.maxReplicas }}
+  metrics:
+  {{- if .Values.autoscaling.targetCPUUtilizationPercentage }}
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.autoscaling.targetCPUUtilizationPercentage }}
+  {{- end }}
+  {{- if .Values.autoscaling.targetMemoryUtilizationPercentage }}
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.autoscaling.targetMemoryUtilizationPercentage }}
+  {{- end }}
+{{- end }}

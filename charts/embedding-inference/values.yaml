@@ -1,0 +1,118 @@
+# Default values for embedding-inference chart
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/vllm-project/vllm
+  pullPolicy: IfNotPresent
+  tag: "0.4.0"
+
+# Model configuration
+model:
+  # HuggingFace model ID or local path
+  # Recommended: BAAI/bge-m3, nomic-ai/nomic-embed-text-v1.5, thena-ai/bge-reranker-v2-m3
+  name: "BAAI/bge-m3"
+  # Download on startup (requires internet)
+  downloadOnStartup: true
+  # HF token for gated models
+  hfToken: ""
+
+# Engine configuration
+engine:
+  # Port for OpenAI-compatible API
+  port: 8000
+  # Task type: embed (embedding), rank (rerank)
+  task: embed
+  # Max model length
+  maxModelLen: 8192
+  # Max batch size for embedding
+  maxBatchSize: 256
+  # GPU memory fraction per GPU (0.0-1.0)
+  gpuMemoryUtilization: 0.90
+  # Extra engine arguments
+  extraArgs: ""
+  # Pooler type: mean, cls, last_token
+  pooler: mean
+  # Enable prefix caching
+  enablePrefixCaching: false
+
+# GPU hardware type
+gpuType: nvidia
+# Supported: nvidia, ascend, amd, intel
+
+# Resource limits (embedding is often CPU-friendly for small models)
+resources:
+  limits:
+    nvidia.com/gpu: "1"
+    memory: "16Gi"
+    cpu: "4"
+  requests:
+    cpu: "2"
+    memory: "8Gi"
+
+# Node selector
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 8000
+  annotations: {}
+
+# Health checks
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8000
+  initialDelaySeconds: 30
+  periodSeconds: 10
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 8000
+  initialDelaySeconds: 10
+  periodSeconds: 5
+
+# Autoscaling (embedding often scales by request rate)
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+  # Custom metric for embedding request rate
+  targetQPSPerReplica: 50
+
+# Persistence (for model cache)
+persistence:
+  enabled: false
+  storageClass: ""
+  size: 50Gi
+
+# Pod annotations
+podAnnotations: {}
+podLabels: {}
+
+# Security context
+securityContext:
+  runAsUser: 0
+  runAsGroup: 0
+  fsGroup: 0
+
+# Init containers
+initContainers: []
+
+# Sidecar containers
+sidecars: []
+
+# Service account
+serviceAccount:
+  create: false
+  name: ""
+  annotations: {}
+
+# Volumes and volume mounts
+volumes: []
+volumeMounts: []

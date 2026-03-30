@@ -1,0 +1,127 @@
+# Default values for vision-inference chart
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/vllm-project/vllm
+  pullPolicy: IfNotPresent
+  tag: "0.6.0"  # v0.6+ has comprehensive vision support
+
+# Model configuration
+model:
+  # HuggingFace model ID or local path
+  # Supported: llava-hf/llava-1.5-*, Qwen/Qwen2-VL-*, OpenGVLab/InternVL2-*
+  name: "llava-hf/llava-1.5-7b-hf"
+  # Download on startup (requires internet)
+  downloadOnStartup: true
+  # HF token for gated models
+  hfToken: ""
+
+# Engine configuration
+engine:
+  # Port for OpenAI-compatible API
+  port: 8000
+  # Max model length (vision models often need less context)
+  maxModelLen: 4096
+  # GPU memory fraction per GPU (0.0-1.0, vision needs more)
+  gpuMemoryUtilization: 0.85
+  # Max number of image inputs per request
+  maxNumSegs: 1
+  # Extra engine arguments
+  extraArgs: ""
+  # Tensor parallelism (for multi-GPU)
+  tensorParallelSize: 1
+  # Pipeline parallelism (for multi-node)
+  pipelineParallelSize: 1
+
+# Multi-node / distributed inference
+distributed:
+  enabled: false
+  initImage: "nccl:latest"
+  nodeList: []
+  masterAddr: ""
+  masterPort: 29500
+
+# Scheduler type
+scheduler:
+  type: native
+  annotations: {}
+
+# GPU hardware type
+gpuType: nvidia
+# Supported: nvidia, ascend
+
+# Resource limits (vision models need more memory)
+resources:
+  limits:
+    nvidia.com/gpu: "1"
+    memory: "32Gi"
+    cpu: "6"
+  requests:
+    cpu: "4"
+    memory: "16Gi"
+
+# Node selector
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 8000
+  annotations: {}
+
+# Health checks
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8000
+  initialDelaySeconds: 45
+  periodSeconds: 10
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 8000
+  initialDelaySeconds: 15
+  periodSeconds: 5
+
+# Autoscaling
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+# Persistence (for model cache)
+persistence:
+  enabled: false
+  storageClass: ""
+  size: 80Gi
+
+# Pod annotations
+podAnnotations: {}
+podLabels: {}
+
+# Security context
+securityContext:
+  runAsUser: 0
+  runAsGroup: 0
+  fsGroup: 0
+
+# Init containers
+initContainers: []
+
+# Sidecar containers
+sidecars: []
+
+# Service account
+serviceAccount:
+  create: false
+  name: ""
+  annotations: {}
+
+# Volumes and volume mounts
+volumes: []
+volumeMounts: []
