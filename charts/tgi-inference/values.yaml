@@ -1,0 +1,149 @@
+# Default values for vllm-inference chart
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/huggingface/text-generation-inference
+  pullPolicy: IfNotPresent
+  tag: "2.0"
+
+# Model configuration
+model:
+  # HuggingFace model ID or local path
+  name: "Qwen/Qwen2.5-7B-Instruct"
+  # Model format: auto, fp8, fp16, bf16, int8, awq, gptq
+  format: auto
+  # Download on startup (requires internet)
+  downloadOnStartup: true
+  # HF token for gated models
+  hfToken: ""
+
+# Engine configuration
+engine:
+  # Port for OpenAI-compatible API
+  port: 8000
+  # Extra engine arguments
+  extraArgs: ""
+  # Max model length
+  maxModelLen: 8192
+  # Tensor parallelism (for multi-GPU)
+  tensorParallelSize: 1
+  # Pipeline parallelism (for multi-node)
+  pipelineParallelSize: 1
+  # GPU memory fraction per GPU (0.0-1.0)
+  gpuMemoryUtilization: 0.90
+  # Enable prefix caching
+  enablePrefixCaching: false
+  # Enable chunked prefill
+  enableChunkedPrell: false
+
+# Multi-node / distributed inference
+distributed:
+  enabled: false
+  # Init container image for NCCL setup
+  initImage: "nccl:latest"
+  # Node list for multi-node (comma-separated hostnames)
+  nodeList: []
+  # Master address (usually first node)
+  masterAddr: ""
+  # Master port
+  masterPort: 29500
+
+# Scheduler type
+scheduler:
+  # native, hami (Xiaohongshu), volcano (Huawei)
+  type: native
+  # Scheduler-specific annotations
+  annotations: {}
+
+# GPU hardware type
+gpuType: nvidia
+# Supported: nvidia, ascend, amd, intel, metal
+
+# Resource limits
+resources:
+  limits:
+    nvidia.com/gpu: "1"
+    memory: "16Gi"
+    cpu: "4"
+  requests:
+    cpu: "2"
+    memory: "8Gi"
+
+# Node selector
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 8000
+  annotations: {}
+
+# Ingress configuration
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: vllm.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# Health checks
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8000
+  initialDelaySeconds: 30
+  periodSeconds: 10
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 8000
+  initialDelaySeconds: 10
+  periodSeconds: 5
+
+# Autoscaling
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+# Persistence (for model cache)
+persistence:
+  enabled: false
+  storageClass: ""
+  size: 50Gi
+  mountPath: /root/.cache/huggingface
+
+# Pod annotations
+podAnnotations: {}
+podLabels: {}
+
+# Security context
+securityContext:
+  runAsUser: 0
+  runAsGroup: 0
+  fsGroup: 0
+
+# Init containers (e.g., model downloader)
+initContainers: []
+
+# Sidecar containers
+sidecars: []
+
+# Service account
+serviceAccount:
+  create: false
+  name: ""
+  annotations: {}
+
+# Volumes and volume mounts
+volumes: []
+volumeMounts: []

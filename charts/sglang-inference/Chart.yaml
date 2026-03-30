@@ -1,0 +1,20 @@
+apiVersion: v2
+name: sglang-inference
+description: SGLang high-throughput LLM inference engine Helm chart
+type: application
+version: 0.1.0
+appVersion: "latest"
+keywords:
+  - llm
+  - SGLang
+  - inference
+  - gpu
+  - nvidia
+  - ascend
+  - sglang
+home: https://github.com/axeprpr/helm-llm-repo
+sources:
+  - https://github.com/axeprpr/helm-llm-repo
+maintainers:
+  - name: axeprpr
+    email: axe3@qq.com

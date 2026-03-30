@@ -1,0 +1,20 @@
+apiVersion: v2
+name: tgi-inference
+description: TGI high-throughput LLM inference engine Helm chart
+type: application
+version: 0.1.0
+appVersion: "2.0"
+keywords:
+  - llm
+  - TGI
+  - inference
+  - gpu
+  - nvidia
+  - ascend
+  - sglang
+home: https://github.com/axeprpr/helm-llm-repo
+sources:
+  - https://github.com/axeprpr/helm-llm-repo
+maintainers:
+  - name: axeprpr
+    email: axe3@qq.com
