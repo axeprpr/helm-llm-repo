@@ -3,9 +3,9 @@ entries:
   llamacpp-inference:
   - apiVersion: v2
     appVersion: b8580
-    created: "2026-03-30T09:55:08.3567753Z"
+    created: "2026-04-02T14:32:14.592417135Z"
     description: llama.cpp high-throughput LLM inference engine Helm chart
-    digest: f47d817fdfd4777d47461c12999c42c9b3d10330c15caa2228c7fa2e5c743c63
+    digest: bbbe84864d795f3559309ba9a246ac87b686a1a1e9cfb588ef150f02ab609348
     home: https://github.com/axeprpr/helm-llm-repo
     keywords:
     - llm
@@ -28,9 +28,9 @@ entries:
   sglang-inference:
   - apiVersion: v2
     appVersion: v0.5.9
-    created: "2026-03-30T09:55:08.357653479Z"
+    created: "2026-04-02T14:32:14.592996663Z"
     description: SGLang high-throughput LLM inference engine Helm chart
-    digest: 0217800c6e8596bc6b5a42d390d82bc12c8ff13eaab2b39e50efd1706f3f37ae
+    digest: ffc1e55d310aaaeed5f89a07cbfb9db9316274def878f411266c693ab8d888fd
     home: https://github.com/axeprpr/helm-llm-repo
     keywords:
     - llm
@@ -53,9 +53,9 @@ entries:
   vllm-inference:
   - apiVersion: v2
     appVersion: 0.18.0
-    created: "2026-03-30T09:55:08.35859234Z"
+    created: "2026-04-02T14:32:14.59368845Z"
     description: vLLM high-throughput LLM inference engine Helm chart
-    digest: 55866bce525551f45be4db83676c853cb434203cb7a37976d6bc7566c3961ea5
+    digest: b808e7fb7774619b5486b18dc7804f8ceb6b26d9385e8ddc120c79f550929dd2
     home: https://github.com/axeprpr/helm-llm-repo
     keywords:
     - llm
@@ -75,4 +75,4 @@ entries:
     urls:
     - https://axeprpr.github.io/helm-llm-repo/vllm-inference-0.1.0.tgz
     version: 0.1.0
-generated: "2026-03-30T09:55:08.355616417Z"
+generated: "2026-04-02T14:32:14.591556975Z"
