@@ -4,6 +4,10 @@ metadata:
   name: {{ include "sglang-inference.fullname" . }}
   labels:
     {{- include "sglang-inference.labels" . | nindent 4 }}
+  {{- if and (eq .Values.scheduler.type "volcano") (hasKey .Values.scheduler "volcano") (gt (int .Values.scheduler.volcano.groupMinMember) 0) }}
+  annotations:
+    scheduling.volcano.sh/group-min-member: {{ .Values.scheduler.volcano.groupMinMember | quote }}
+  {{- end }}
 {{- with .Values.podLabels }}
     {{- toYaml . | nindent 4 }}
 {{- end }}

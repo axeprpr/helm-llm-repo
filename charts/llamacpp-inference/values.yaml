@@ -79,6 +79,7 @@ distributed:
 # Scheduler type
 scheduler:
   type: native
+  volcano: {}
   name: ""
   annotations: {}
   volcano:
