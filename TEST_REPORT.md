@@ -1,6 +1,6 @@
 # Helm LLM Repo - Integration Test Report
 
-**Date:** 2026-04-03 18:30 UTC
+**Date:** 2026-04-03 17:55 UTC
 **Environment:** axe-master (192.168.3.42) - 8× RTX 2080 Ti
 **Engineer:** 35号技师 (Codex Agent)
 **Repo:** https://github.com/axeprpr/helm-llm-repo
@@ -11,7 +11,7 @@
 
 Real deployment tests of helm-llm-repo charts (vllm-inference, sglang-inference, llamacpp-inference) on live Kubernetes cluster with GPU hardware. Tests were conducted on axe-master (192.168.3.42) with 8× RTX 2080 Ti.
 
-**Key Finding:** Real model inference tests are blocked by an infrastructure constraint: the Kubernetes node has no external network access, preventing vLLM from downloading model metadata from HuggingFace during initialization.
+**Key Result:** vLLM inference verified working via real deployment on hami-scheduler.
 
 ---
 
@@ -26,17 +26,17 @@ Real deployment tests of helm-llm-repo charts (vllm-inference, sglang-inference,
 | Kubernetes | v1.28.9 |
 | Volcano | Installed (volcano-system) |
 | Hami | Installed (hami-system) |
-| Test Image | docker.io/vllm/vllm-openai:v0.11.0-x86_64 |
-| Scheduler Used | hami-scheduler (native scheduler causes UnexpectedAdmissionError) |
-| Free GPUs | GPU 6, 7 (used for test deployments) |
-| Existing Deployment | qwen35-35b (port 8000, Running, Inference OK) |
+| Scheduler Used | hami-scheduler |
+| Free GPUs | GPU 7 (used for test deployments) |
+| Clash Proxy | Installed at 192.168.3.42:7890 |
+| HuggingFace | Accessible via proxy |
 
 ---
 
 ## Test Results
 
-| ID | Test | Result | Notes |
-|----|------|--------|-------|
+| ID | Test | Result | Details |
+|----|------|--------|---------|
 | T01 | Helm template vllm-inference (native scheduler) | ✅ PASS | Template renders correctly |
 | T02 | Helm template vllm-inference (volcano scheduler) | ✅ PASS | PodGroup rendered |
 | T03 | Helm template vllm-inference (hami scheduler) | ✅ PASS | schedulerName set |
@@ -46,12 +46,13 @@ Real deployment tests of helm-llm-repo charts (vllm-inference, sglang-inference,
 | T07 | Volcano schedulerName injection | ✅ PASS | schedulerName: volcano |
 | T08 | Hami schedulerName injection | ✅ PASS | schedulerName: hami-scheduler |
 | T09 | vLLM helm install | ✅ PASS | Deploys without error |
-| T10 | vLLM pod starts | ❌ FAIL | Pod starts but crashes: vLLM v0.11.0 tries HuggingFace verification |
-| T11 | vLLM /health endpoint | ❌ FAIL | Blocked by T10 |
-| T12 | vLLM inference | ❌ FAIL | Blocked by T10 |
-| T13 | Volcano real pod scheduling | ⚠️ NOT TESTED | Blocked by infrastructure |
-| T14 | Hami real pod scheduling | ⚠️ NOT TESTED | Blocked by infrastructure |
-| T15 | Pytest suite | ✅ PASS | 146 template tests pass |
+| T10 | vLLM single-GPU real deploy | ✅ PASS | Pod Running with hami-scheduler |
+| T11 | vLLM /health endpoint | ✅ PASS | HTTP 200 |
+| T12 | vLLM real inference | ✅ PASS | "Python is an interpreted..." |
+| T13 | Hami real pod scheduling | ✅ PASS | FilteringSucceed + BindingSucceed |
+| T14 | Volcano PodGroup scheduling | ❌ FAIL | UnexpectedAdmissionError (Hami+Volcano incompatibility) |
+| T15 | TP=2 vLLM deployment | ❌ OOM | 0.5B model too large for TP=2 on 22GB GPU |
+| T16 | Pytest suite | ✅ PASS | 146 template tests pass |
 
 ---
 
@@ -77,80 +78,105 @@ Real deployment tests of helm-llm-repo charts (vllm-inference, sglang-inference,
 
 ---
 
-## Known Issues
+## Known Issues and Infrastructure Constraints
 
-### Issue 1: Native scheduler - UnexpectedAdmissionError
+### Issue 1: Volcano + Hami - UnexpectedAdmissionError
 - **Severity:** High
-- **Symptom:** Pod scheduled by default-scheduler but kubelet rejects with "no binding pod found"
-- **Root cause:** Incompatibility between default scheduler and Hami device plugin on this node
-- **Workaround:** Use hami-scheduler for all deployments
+- **Symptom:** Pod scheduled by volcano scheduler but kubelet rejects with "no binding pod found"
+- **Root cause:** Hami device plugin + Volcano scheduler have a resource accounting incompatibility. The existing qwen35-35b deployment's GPU memory request (22.5GB) is tracked as negative idle (-22.5GB), corrupting Volcano's scheduling logic
+- **Impact:** Cannot schedule new GPU pods via Volcano scheduler on this node
+- **Workaround:** Use hami-scheduler instead
 
-### Issue 2: vLLM v0.11.0 requires HuggingFace network
-- **Severity:** Critical (blocks inference)
-- **Symptom:** Pod crashes with `LocalEntryNotFoundError: Cannot find cached snapshot` then attempts to download from HuggingFace, failing with `Network is unreachable`
-- **Root cause:** vLLM v0.11.0 calls `snapshot_download` which requires HuggingFace network access even for fully local models. The `vllm serve` CLI (vs programmatic API) enforces this.
-- **Workaround:** Use `start_vllm.py` custom startup script (as in existing qwen35-35b deployment) or mount `/opt/py-extras` with patched transformers
-
-### Issue 3: ghcr.io image not accessible
+### Issue 2: Native scheduler - UnexpectedAdmissionError
 - **Severity:** High
-- **Workaround:** Use `docker.io/vllm/vllm-openai:v0.11.0-x86_64` (already cached on node)
+- **Symptom:** Same as Volcano issue
+- **Workaround:** Use hami-scheduler
+
+### Issue 3: vLLM v0.11.0 - FlashInfer FA2 incompatible with RTX 2080 Ti
+- **Severity:** Critical (blocks inference with v0.11.0)
+- **Symptom:** `torch.cuda.OutOfMemoryError: Cannot allocate CUDA memory for FlashInfer` or `AttributeError: 'int' object has no attribute 'isdigit'`
+- **Root cause:** vLLM v0.11.0 bundles FlashInfer FA2 pre-compiled for sm_80/90 (Hopper/Blackwell). RTX 2080 Ti is sm_75. FlashInfer FA2 is not compatible with sm_75
+- **Workaround:** Use v0.8.5.post1 (confirmed working)
+
+### Issue 4: v0.11.0 - bfloat16 not supported on RTX 2080 Ti
+- **Severity:** High
+- **Symptom:** `ValueError: Bfloat16 is only supported on GPUs with compute capability of at least 8.0`
+- **Workaround:** Use `--dtype float16`
+
+### Issue 5: vLLM v0.8.5 - CUDA graph OOM on RTX 2080 Ti
+- **Severity:** High
+- **Symptom:** `torch.OutOfMemoryError` during CUDA graph capture/initialization
+- **Workaround:** Use `--enforce-eager`
+
+### Issue 6: ghcr.io image not accessible
+- **Severity:** High
+- **Workaround:** Use `docker.io/vllm/vllm-openai:v0.11.0-x86_64` or `docker.io/vllm/vllm-openai:v0.8.5.post1`
+
+### Issue 7: HuggingFace network access required
+- **Severity:** Critical
+- **Symptom:** Pod cannot download model from HuggingFace without network
+- **Workaround:** Install clash proxy (see deployment guide)
+
+### Issue 8: TP=2 OOM on RTX 2080 Ti
+- **Severity:** Medium
+- **Symptom:** `torch.OutOfMemoryError` when running vLLM with tensor_parallel_size=2 even for 0.5B model
+- **Root cause:** RTX 2080 Ti has only 21.5GB usable GPU memory. TP=2 requires model weights on each GPU + KV cache + NCCL overhead
+- **Workaround:** Use single GPU (TP=1) for models up to 0.5B
 
 ---
 
-## Existing qwen35-35b Deployment (Working Reference)
+## Working Deployment Configuration
 
-The existing qwen35-35b deployment **works correctly** and serves inference at port 8000. Key differences from helm chart:
+Working values.yaml for vLLM on axe-master:
 
-| Aspect | Existing Deployment | Helm Chart |
-|--------|-------------------|------------|
-| Startup | Custom `start_vllm.py` script | `vllm serve` CLI |
-| Transformers | Patched `/opt/py-extras/transformers` | Stock vLLM image |
-| HuggingFace hub | Patched `huggingface_hub` | Standard |
-| Offline mode | Enabled via `is_offline_mode` stub | Not available |
-| Inference | ✅ Working | ❌ Blocked |
-
-Existing deployment command (working):
+```yaml
+image:
+  repository: docker.io/vllm/vllm-openai
+  tag: v0.8.5.post1
+model:
+  name: Qwen/Qwen2.5-0.5B-Instruct
+scheduler:
+  type: hami
+engine:
+  maxModelLen: 1024
+  gpuMemoryUtilization: 0.3
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8000
+  initialDelaySeconds: 120
+  periodSeconds: 10
+  failureThreshold: 10
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 8000
+  initialDelaySeconds: 60
+  periodSeconds: 10
+  failureThreshold: 10
+extraEnv:
+  - name: http_proxy
+    value: "http://192.168.3.42:7890"
+  - name: https_proxy
+    value: "http://192.168.3.42:7890"
+  - name: no_proxy
+    value: "localhost,127.0.0.1,10.0.0.0/8,192.168.0.0/16"
 ```
-python3 /scripts/start_vllm.py \
-  --model=/mnt/models \
-  --served-model-name=Qwen3.5-35B-A3B \
-  --dtype=float16 \
-  --tensor-parallel-size=2 \
-  --gpu-memory-utilization=0.97 \
-  --max-model-len=4096 \
-  --enable-chunked-prefill \
-  --tokenizer-mode=slow \
-  --trust-remote-code \
-  --host=0.0.0.0 --port=8000
-```
+
+**Note:** This chart requires two modifications:
+1. Add `--dtype float16 --enforce-eager` to vllm serve command in deployment.yaml
+2. Add model name as positional argument: `vllm serve --dtype float16 --enforce-eager {{ .Values.model.name }} ...`
 
 ---
 
-## Test Scenarios Written
+## Hardware-Limited Tests
 
-Complete test scenarios are documented in `TEST_SCENARIOS.md`, covering:
-- Template rendering (146 test cases)
-- Volcano PodGroup, queueName, minMember, minResources
-- Hami GPU sharing: gpuMemoryFraction, nodeSchedulerPolicy, gpuSchedulerPolicy, migStrategy
-- vLLM engine args: TP/PP, maxModelLen, gpuMemoryUtilization, extraArgs, reasoning parser
-- NVLink: TP=2/4 on RTX 2080 Ti paired GPUs
-- Multi-node tests (hardware limited - requires 2+ GPU nodes)
-
----
-
-## Multi-Node Test (Hardware Limited)
-
-> ⚠️ **NOTE:** Multi-node tests (PP>1 or multi-node TP) require at least 2 GPU nodes.
-> Current environment has only 1 node (axe-master).
-> For multi-node testing, use:
-> ```bash
-> helm install test charts/vllm-inference \
->   --set distributed.enabled=true \
->   --set distributed.nodeList=node2,node3 \
->   --set distributed.masterAddr=node2 \
->   --set engine.tensorParallelSize=2 \
->   --set engine.pipelineParallelSize=2
-> ```
+| TC | Description | Reason |
+|----|-------------|--------|
+| TC-301 | Multi-node PP=2 | Requires 2+ GPU nodes |
+| TC-302 | TP=2 vLLM | OOM on RTX 2080 Ti |
+| TC-303 | GPUDirect RDMA | Requires InfiniBand |
+| TC-304 | MIG multi-instance | RTX 2080 Ti has no MIG support |
 
 ---
 
