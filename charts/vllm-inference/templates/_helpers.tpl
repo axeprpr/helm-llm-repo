@@ -53,15 +53,15 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
-Build vLLM engine command based on model.type
+Build vLLM engine flags based on model.type.
+The model name is passed positionally by the deployment command because
+vLLM v0.11.0 no longer accepts it via --model.
 - chat: standard vLLM server
 - embedding: vLLM server with --task embed/rank
 - vision: vLLM server (multipart messages handled automatically)
 */}}
 {{- define "vllm-inference.engineArgs" -}}
 {{- $args := list }}
-{{- $args = append $args "--model" }}
-{{- $args = append $args .Values.model.name }}
 {{- $args = append $args "--trust-remote-code" }}
 {{- if .Values.model.hfToken }}
 {{- $args = append $args "--hf-token" }}
