@@ -440,3 +440,159 @@ fix(_helpers.tpl): fix gpuMemoryUtilization format and extraArgs concat
 fix(values.yaml): add startupProbe, volumes, volumeMounts for model cache
 ```
 
+
+---
+
+## 2026-04-04 Late Morning Session — llama.cpp + Hami 部署实测
+
+### 环境状态
+- **192.168.3.42**: GPU 0-5 被占用，GPU 6/7 空闲
+- **Hami 调度器**: 正常（Pod 绑定到 GPU 6/7）
+- **Hami device plugin**: 注入 `NVIDIA_VISIBLE_DEVICES=GPU-UUID`，不注入 `CUDA_VISIBLE_DEVICES`
+
+### llama.cpp + Hami 部署（进行中）
+
+**Chart**: `charts/llamacpp-inference`
+**Values**:
+```yaml
+gpuType: nvidia
+image:
+  autoBackend: false
+  repository: ghcr.io/ggerganov/llama.cpp
+  tag: server-cuda-b4719
+model:
+  name: Qwen/Qwen2.5-0.5B-Instruct-GGUF
+  ggufFile: qwen2.5-0.5b-instruct-q4_k_m.gguf
+  downloadOnStartup: true
+engine:
+  port: 8000
+  contextSize: 2048
+  gpuLayers: -1
+  tensorParallelSize: 1
+env:
+  - name: http_proxy
+    value: http://192.168.3.42:7890
+  - name: https_proxy
+    value: http://192.168.3.42:7890
+scheduler:
+  name: hami-scheduler
+```
+
+**观察**:
+- `helm install` 成功，Pod 在 Running 状态
+- llama.cpp 进程已启动（PID 1），检测到 1 个 CUDA 设备（compute 7.5）
+- GPU 6/7 显示 0 MiB（模型未加载）
+- `/health` 尚未就绪（模型下载中）
+- 模型下载速度受限于代理带宽，预计需要数分钟
+
+**渲染的命令**:
+```
+/app/llama-server -hf Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M -fa --host 0.0.0.0 --port 8000 --ctx-size 2048 --n-gpu-layers -1 --batch-size 512 --parallel 4
+```
+
+### Hami + vLLM 核心问题（已确认）
+
+**问题**: Hami device plugin 的 MutatingWebhookConfiguration 只注入 `NVIDIA_VISIBLE_DEVICES`（GPU UUID），不注入 `CUDA_VISIBLE_DEVICES`。
+
+| 环境变量 | Hami webhook | KServe webhook | vLLM 行为 |
+|---|---|---|---|
+| `NVIDIA_VISIBLE_DEVICES` | ✅ 注入 | ✅ 注入 | 控制 nvidia-container-toolkit 可见 GPU |
+| `CUDA_VISIBLE_DEVICES` | ❌ 不注入 | ✅ 注入 | 控制 PyTorch GPU 索引选择 |
+
+**结果**: vLLM worker 子进程看到所有 8 张 GPU（因为没有 `CUDA_VISIBLE_DEVICES` 限制），默认选择 GPU 0（已被占用）→ OOM。
+
+**解决方案**:
+1. 使用 KServe InferenceService（KServe 的 mutating webhook 额外注入了 `CUDA_VISIBLE_DEVICES`）
+2. 给 Pod 加 initContainer，从 downward API 读取 Hami 分配的 GPU UUID 并设置 `CUDA_VISIBLE_DEVICES`
+3. 换用默认调度器 + 手动 GPU 分配（Hami device plugin 拒绝已设置 `CUDA_VISIBLE_DEVICES` 的 Pod）
+
+### RTX 2080 Ti (sm_75) 兼容的 vLLM 版本
+- **最后支持 sm_75 的版本**: `vllm/vllm-openai:v0.8.5.post1`
+- **必须参数**: `--dtype half`（不能用 bfloat16）
+- **推荐参数**: `--enforce-eager`（sm_75 不支持 CUDA graph）
+
+### 已提交 Commit
+```
+bbf37af fix(vllm): gpuMemoryUtilization format, extraArgs concat, startupProbe, volumes
+f8ea6f3 fix: add --quantization flag for gptq/awq model formats
+```
+
+
+---
+
+## 2026-04-04 10:06 UTC — llama.cpp + Hami 真实推理 PASS ✅
+
+### 测试结果
+
+| 字段 | 值 |
+|------|-----|
+| Chart | `llamacpp-inference` |
+| 调度器 | `hami-scheduler` |
+| GPU | GPU 7 (RTX 2080 Ti) |
+| Hami 分配 | `GPU-e099b988-e339-e561-2506-0bd2b99201b3` |
+| 模型 | `/llm-model/qwen2.5-0.5b-instruct-q4_k_m.gguf` (469MB, Q4_K_M) |
+| GGUF 文件 | 预下载到 `/mnt/models/llama-cache/gguf/` |
+| Pod IP | 10.0.0.75 |
+| 推理结果 | ✅ 返回正确（Hello / 4）|
+
+### Values 配置
+```yaml
+gpuType: nvidia
+image:
+  autoBackend: false
+  repository: ghcr.io/ggerganov/llama.cpp
+  tag: server-cuda-b4719
+model:
+  name: /llm-model/qwen2.5-0.5b-instruct-q4_k_m.gguf
+  downloadOnStartup: false
+engine:
+  port: 8000
+  contextSize: 2048
+  gpuLayers: -1
+  tensorParallelSize: 1
+volumes:
+  - name: llm-model
+    hostPath:
+      path: /mnt/models/llama-cache/gguf
+      type: Directory
+volumeMounts:
+  - name: llm-model
+    mountPath: /llm-model
+scheduler:
+  name: hami-scheduler
+```
+
+### 踩坑记录
+
+1. **GGUF 文件下载慢**: 之前用 `downloadOnStartup: true` 走代理下载，代理速度慢导致 liveness probe 超时重启。解决：先用 `huggingface-cli` 在 host 上下载模型，再通过 `hostPath` 挂载。
+
+2. **volume hostPath type 类型错误**: 第一次用 `type: File`，但挂载路径是目录，kubelet 报错 `hostPath type check failed`。解决：改 `type: Directory`。
+
+3. **镜像 tag 被忽略**: `image.autoBackend: true` 时 chart 会忽略 `image.tag`。解决：设 `autoBackend: false` 强制使用指定 tag。
+
+### 渲染的命令
+```
+/app/llama-server -m /llm-model/qwen2.5-0.5b-instruct-q4_k_m.gguf -fa --host 0.0.0.0 --port 8000 --ctx-size 2048 --n-gpu-layers -1 --batch-size 512 --parallel 4
+```
+
+### 推理验证
+
+```bash
+# 请求1
+$ curl -X POST http://10.0.0.75:8000/v1/chat/completions \
+  -d '{"model":"/llm-model/qwen2.5-0.5b-instruct-q4_k_m.gguf",
+       "messages":[{"role":"user","content":"Say hi in one word"}]}'
+# 响应: {"content":"Hello"}
+
+# 请求2
+$ curl -X POST http://10.0.0.75:8000/v1/chat/completions \
+  -d '{"model":"/llm-model/qwen2.5-0.5b-instruct-q4_k_m.gguf",
+       "messages":[{"role":"user","content":"What is 2+2? Answer in one number"}]}'
+# 响应: {"content":"4"}
+```
+
+### GPU 内存使用
+```
+GPU 7: 595 MiB used (model loaded on RTX 2080 Ti)
+```
+
