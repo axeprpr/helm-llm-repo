@@ -1,550 +1,605 @@
-# Helm LLM Test Scenarios
+# Helm LLM Scheduler Test Scenarios
 
 Date: 2026-04-04
 
-## Purpose
+This document is the scheduler-focused test plan for `helm-llm-repo`. It covers:
 
-This document defines the complete test matrix for `helm-llm-repo`, with emphasis on:
+- existing automated coverage in `tests/`
+- Volcano deployment and runtime scenarios
+- HAMi deployment and runtime scenarios
+- `volcano-vgpu-device-plugin` integration scenarios
+- actual GPU-node targets already referenced by repo docs and reports
+
+## Repo Structure Snapshot
+
+Charts currently in this repo:
 
 - `charts/vllm-inference`
-- HAMi scheduling behavior
-- Volcano scheduling behavior
-- real deployment evidence on:
-  - `192.168.3.42` with `8 x RTX 2080 Ti`
-  - `192.168.23.27` with `8 x RTX 4090`
+- `charts/sglang-inference`
+- `charts/llamacpp-inference`
 
-The goal is not “template renders OK”, but end-to-end proof that:
+Current scheduler-oriented tests:
 
-- chart values map to the expected Kubernetes manifest,
-- the chosen scheduler really binds workloads as designed,
-- vLLM can perform real inference,
-- failures are recorded as environment incompatibility, scheduler limitation, or chart bug with evidence.
+- `tests/volcano_test.py`
+- `tests/hami_test.py`
+- `tests/vllm_chart_test.py`
+- `tests/chart_regression_test.py`
 
-## Scheduler Difference Summary
+What these tests already prove:
 
-### HAMi
+- all three charts render `schedulerName: volcano` when `scheduler.type=volcano`
+- all three charts render `schedulerName: hami-scheduler` when `scheduler.type=hami`
+- Volcano `PodGroup` creation, `groupMinMember`, `queueName`, `minResources`, and `priorityClassName` rendering work across charts
+- HAMi-related render paths for scheduler annotations and vGPU memory-share values exist
+- vLLM keeps the scheduler-specific resource/annotation wiring used by real deployments
 
-HAMi is device-centric. The key behaviors to validate are:
+What the automated tests do not prove:
 
-- GPU sharing through `nvidia.com/gpumem` or `nvidia.com/gpumem-percentage`
-- GPU core sharing through `nvidia.com/gpucores`
-- explicit GPU UUID selection through `nvidia.com/use-gpuuuid`
-- node and GPU placement policies through:
-  - `hami.io/node-scheduler-policy`
-  - `hami.io/gpu-scheduler-policy`
-- topology-aware GPU placement on NVIDIA when available
-- dynamic MIG support on compatible NVIDIA generations
+- scheduler installation on a real cluster
+- queue behavior in a live Volcano deployment
+- gang-scheduling admission behavior
+- actual HAMi vGPU sharing on GPU nodes
+- actual device isolation and GPU UUID binding
+- `volcano-vgpu-device-plugin` runtime integration
 
-### Volcano
+## Actual GPU Nodes Referenced by This Repo
 
-Volcano is queue and gang-scheduling centric. The key behaviors to validate are:
+These are the GPU nodes already referenced in repo docs and reports and should be treated as the primary runtime targets:
 
-- `PodGroup` creation and lifecycle
-- `minMember` gang semantics
-- `queue` assignment and queue state
-- `minResources` admission gating
-- `priorityClassName` ordering / preemption interaction
-- queue-level multi-tenant resource control
-- unified scheduling plugins such as `gang`, `drf`, `proportion`, `nodeorder`, `binpack`
+| ID | Host | GPU inventory | Source in repo | Intended use |
+|---|---|---|---|---|
+| `ENV-42` | `192.168.3.42` (`axe-master`) | `8 x RTX 2080 Ti` | `TEST_REPORT.md`, older `TEST_SCENARIOS.md` | current real-evidence node; HAMI and Volcano behavior already observed here |
+| `ENV-27` | `192.168.23.27` | `8 x RTX 4090` | older `TEST_SCENARIOS.md` | higher-capacity multi-GPU validation target |
 
-### Practical Difference for This Repository
-
-- HAMi answers “which GPU, how much GPU memory/core, can I share or pin a device?”
-- Volcano answers “when may this group run, in which queue, and under what gang / priority / quota policy?”
-- `vllm-inference` must therefore be tested in three modes:
-  - native kube-scheduler
-  - HAMi scheduler
-  - Volcano scheduler
-
-## Environments
-
-### ENV-42
-
-- Host: `192.168.3.42`
-- GPUs: `8 x RTX 2080 Ti`
-- Purpose:
-  - validate proxy-assisted model pulls
-  - validate HAMi on older Turing GPUs
-  - validate Volcano admission and failure modes on the existing cluster
-- Known facts already observed:
-  - Clash proxy exists at `http://192.168.3.42:7890`
-  - actual topology is not “GPU6/GPU7 NVLink”
-  - `GPU0 <-> GPU3 = NV1`
-  - `GPU6 <-> GPU7 = PIX`
-
-### ENV-27
-
-- Host: `192.168.23.27`
-- GPUs: `8 x RTX 4090`
-- Purpose:
-  - validate the same chart on larger Ada GPUs
-  - validate higher-probability multi-GPU inference success
-  - validate whether topology-aware or explicit card pinning changes placement outcome
+Current repo evidence is strongest on `ENV-42`. `ENV-27` remains the preferred target for larger TP, gang, and binpack validations that are hard to complete on 2080 Ti cards.
 
 ## Evidence Standard
 
-Every real deployment scenario must collect:
+Every real scheduler scenario should capture:
 
-- rendered Helm values file
-- `kubectl get pod -o wide`
+- rendered values file or exact `helm install` command
+- `kubectl get pods -o wide`
 - `kubectl describe pod`
 - `kubectl logs`
-- scheduler events
-- if Volcano is enabled:
-  - `kubectl get podgroup -o yaml`
-- if HAMi is enabled:
-  - pod annotations showing device allocation
-- one real API call:
-  - `/health`
-  - `/v1/chat/completions`, `/v1/embeddings`, or `/v1/rerank`
-- cleanup status after the test
+- relevant events from `kubectl get events --sort-by=.lastTimestamp`
+- `kubectl get deployment,podgroup,queue -A`
+- one live API call when the workload is expected to become Ready
+- cleanup result after the test
 
-## Test Matrix
+Additional scheduler-specific evidence:
 
-### A. Static Render Tests
+- Volcano: `kubectl get podgroup -o yaml`, `kubectl get queue -o yaml`
+- HAMi: pod annotations showing allocation, `nvidia.com/use-gpuuuid` evidence, device-share evidence
+- vGPU plugin: node allocatable resources and device plugin pod logs
 
-#### A-01 vLLM launcher correctness
+## Volcano Scheduler
 
-Goal:
-- prove the chart launches `vllm serve` with model name as a positional argument.
+### What Volcano Is
 
-Checks:
-- command contains `vllm serve <model>`
-- command does not contain deprecated `--model` server invocation
+Volcano is a batch and AI/HPC scheduler for Kubernetes. In this repo, it matters because:
 
-#### A-02 vLLM feature flag rendering
+- it supplies `schedulerName: volcano`
+- it uses `PodGroup` for gang scheduling
+- it supports queue-based admission and quota management
+- it exposes plugins such as `gang`, `binpack`, `drf`, and `proportion`
 
-Goal:
-- validate value-to-flag mapping for chart-managed vLLM features.
+For this repo, Volcano-specific chart knobs are:
 
-Checks:
-- `model.type=embedding` renders `--task`
-- `engine.embeddingTask=embed` renders `--pooler-output-fn`
-- `engine.embeddingTask=rank` does not render pooler output flag
-- `engine.enablePrefixCaching=true` renders `--enable-prefix-caching`
-- `engine.enableChunkedPrefill=true` renders `--enable-chunked-prefill`
-- `model.reasoningParser=...` renders `--reasoning-parser`
-- `engine.tensorParallelSize` renders `--tensor-parallel-size`
-- `engine.pipelineParallelSize` renders `--pipeline-parallel-size`
+- `scheduler.type=volcano`
+- `scheduler.volcano.createPodGroup=true`
+- `scheduler.volcano.groupMinMember`
+- `scheduler.volcano.queueName`
+- `scheduler.volcano.minResources.*`
 
-#### A-03 vLLM runtime override rendering
+### How To Deploy Volcano
 
-Goal:
-- validate chart escape hatches needed for real clusters.
+Official upstream project:
 
-Checks:
-- `command` override renders exactly
-- `args` override renders exactly
-- `startupProbe` renders
-- `runtimeClassName` renders
-- `priorityClassName` renders
-- `terminationGracePeriodSeconds` renders
-- persistence mount path is configurable
+- `volcano-sh/volcano`
 
-#### A-04 HAMi manifest rendering
-
-Goal:
-- validate that HAMi-specific values actually affect the manifest.
-
-Checks:
-- `scheduler.type=hami` sets `schedulerName: hami-scheduler`
-- `scheduler.hami.nodeSchedulerPolicy` maps to `hami.io/node-scheduler-policy`
-- `scheduler.hami.gpuSchedulerPolicy` maps to `hami.io/gpu-scheduler-policy`
-- `scheduler.hami.gpuSharePercent` maps to `nvidia.com/gpumem-percentage`
-- arbitrary scheduler annotations such as `nvidia.com/use-gpuuuid` are preserved
-
-#### A-05 Volcano manifest rendering
-
-Goal:
-- validate Volcano-specific resources emitted by the chart.
-
-Checks:
-- `scheduler.type=volcano` sets `schedulerName: volcano`
-- `scheduler.volcano.createPodGroup=true` creates `PodGroup`
-- `scheduler.volcano.groupMinMember` maps to:
-  - `PodGroup.spec.minMember`
-  - deployment annotation when PodGroup creation is disabled
-- `scheduler.volcano.queueName` maps to `PodGroup.spec.queue`
-- `scheduler.volcano.minResources` maps to `PodGroup.spec.minResources`
-- `priorityClassName` maps to `PodGroup.spec.priorityClassName`
-
-### B. vLLM Functional Scenarios
-
-#### B-01 Chat completion
-
-Target:
-- ENV-42
-- ENV-27
-
-Goal:
-- serve a chat model and return a real completion.
-
-Minimum config:
-- `model.type=chat`
-- `scheduler.type=hami`
-- 1 GPU
-
-Success:
-- pod becomes Ready
-- `/health` returns success
-- `/v1/chat/completions` returns non-empty content
-
-#### B-02 Embedding
-
-Target:
-- ENV-27 preferred
-- ENV-42 optional with a small embedding model
-
-Goal:
-- prove embedding mode works with `model.type=embedding`.
-
-Minimum config:
-- `engine.embeddingTask=embed`
-
-Success:
-- `/v1/embeddings` returns a numeric vector
-
-#### B-03 Rerank / score
-
-Target:
-- ENV-27 preferred
-
-Goal:
-- prove pooling/rerank path works.
-
-Minimum config:
-- `model.type=embedding`
-- `engine.embeddingTask=rank`
-
-Success:
-- `/v1/rerank` or equivalent scoring endpoint returns ranked results
-
-#### B-04 Reasoning parser
-
-Target:
-- ENV-27 preferred
-
-Goal:
-- prove reasoning-capable models render and boot with `--reasoning-parser`.
-
-Success:
-- process starts without CLI error
-- chat completion returns valid OpenAI-compatible payload
-
-#### B-05 Tensor parallelism
-
-Target:
-- ENV-27 primary
-- ENV-42 secondary
-
-Goal:
-- prove TP>1 scheduling and inference.
-
-Variants:
-- TP=2
-- TP=4 if model and environment permit
-
-Success:
-- requested GPU count is allocated
-- container logs show multi-GPU startup
-- inference succeeds
-
-Failure recording:
-- if blocked, capture whether it is:
-  - scheduler allocation
-  - topology / NCCL issue
-  - model OOM
-  - runtime incompatibility
-
-#### B-06 NVLink / topology-aware placement
-
-Target:
-- both hosts
-
-Goal:
-- determine whether topology-aware selection produces better placement than naive free-card selection.
-
-Method:
-- compare:
-  - explicit UUID pinning
-  - free-card scheduling
-  - HAMi topology-aware policy when available
-- collect `nvidia-smi topo -m` before deployment
-
-Success:
-- chosen cards and observed performance / startup stability are recorded
-
-Important:
-- do not assume `GPU6/GPU7` are an NVLink pair; verify per host first
-
-### C. HAMi Scheduler Scenarios
-
-#### C-01 Single GPU explicit UUID pinning
-
-Goal:
-- verify `nvidia.com/use-gpuuuid` is respected.
-
-Success:
-- pod is scheduled by `hami-scheduler`
-- allocation annotation includes the requested UUID
-
-#### C-02 GPU memory sharing
-
-Goal:
-- verify `nvidia.com/gpumem-percentage` based sharing.
-
-Variants:
-- 25%
-- 50%
-- 100%
-
-Success:
-- pod is admitted only when accounting permits
-- actual allocation is reflected in annotations or scheduler events
-
-#### C-03 Node policy
-
-Goal:
-- verify `hami.io/node-scheduler-policy`.
-
-Variants:
-- `binpack`
-- `spread`
-
-Success:
-- scheduling preference matches cluster state and policy intent
-
-#### C-04 GPU policy
-
-Goal:
-- verify `hami.io/gpu-scheduler-policy`.
-
-Variants:
-- `binpack`
-- `spread`
-- `topology-aware` on NVIDIA
-
-Success:
-- selected GPU differs when policy changes, if cluster state makes the choice observable
-
-#### C-05 Card type filter
-
-Goal:
-- verify `nvidia.com/use-gputype` and blacklist behavior where relevant.
-
-Success:
-- pod lands only on allowed card type
-
-#### C-06 Dynamic MIG compatibility
-
-Goal:
-- record whether MIG scenarios are applicable on the host.
-
-Expectation:
-- ENV-42 and ENV-27 are not Ampere/Hopper MIG environments, so this is likely “not applicable”.
-
-Success:
-- explicitly record N/A instead of silently omitting the feature
-
-### D. Volcano Scheduler Scenarios
-
-#### D-01 PodGroup creation and lifecycle
-
-Goal:
-- verify `PodGroup` creation and phase transitions.
-
-Success:
-- `PodGroup` exists
-- observed phase is one of:
-  - `pending`
-  - `inqueue`
-  - `running`
-  - `unknown`
-
-#### D-02 Gang scheduling via `minMember`
-
-Goal:
-- verify “all-or-nothing” behavior for grouped pods.
-
-Variants:
-- `replicaCount=2`, `groupMinMember=2`
-- `replicaCount=2`, `groupMinMember=1`
-
-Success:
-- group with unmet minimum does not partially run
-
-#### D-03 Queue routing
-
-Goal:
-- verify `queueName` places the PodGroup into the expected queue.
-
-Success:
-- `PodGroup.spec.queue` matches
-- queue exists and is `Open`
-
-#### D-04 `minResources` admission gating
-
-Goal:
-- verify the pod group remains blocked when minimum resources are not available.
-
-Success:
-- failure is visible in `PodGroup.conditions` or events
-
-#### D-05 Priority / preemption behavior
-
-Goal:
-- verify `priorityClassName` propagation and observe whether higher-priority PodGroups preempt or outrank lower-priority ones in the queue.
-
-Success:
-- ordering change or preemption evidence is recorded
-
-#### D-06 Volcano vs HAMi interaction
-
-Goal:
-- document whether Volcano alone can allocate GPU workloads correctly on the host, and how that differs from HAMi.
-
-Success:
-- exact observed behavior is captured:
-  - success
-  - `UnexpectedAdmissionError`
-  - `PodGroup` stuck `Inqueue`
-  - other cluster-specific failure
-
-### E. Proxy and Artifact Pull Scenarios
-
-#### E-01 ENV-42 proxy verification
-
-Goal:
-- prove model/image pulls can route through Clash when required.
-
-Checks:
-- pod env contains lowercase and/or uppercase proxy variables as intended
-- model/image pull proceeds
-- failures distinguish:
-  - DNS
-  - registry access
-  - runtime compatibility
-
-#### E-02 Offline / local-model path
-
-Goal:
-- prove local PVC-mounted model deployment works without external download dependency.
-
-Success:
-- no remote model download is required
-- inference succeeds from local cache or PVC
-
-## Real Deployment Execution Order
-
-Recommended order:
-
-1. static render tests
-2. ENV-42 proxy verification
-3. ENV-42 HAMi single-GPU smoke
-4. ENV-42 Volcano PodGroup and failure-mode capture
-5. ENV-27 HAMi single-GPU smoke
-6. ENV-27 TP=2 / topology comparison
-7. ENV-27 embedding / rerank / reasoning
-
-## Real Deployment Command Templates
-
-### ENV-42 Hami chat smoke
+Typical install flow:
 
 ```bash
-helm upgrade --install vllm-hami-chat ./charts/vllm-inference \
-  -n llm-serving --create-namespace \
-  --set scheduler.type=hami \
-  --set scheduler.annotations.nvidia.com/use-gpuuuid=GPU-REPLACE_ME \
-  --set scheduler.hami.nodeSchedulerPolicy=binpack \
-  --set scheduler.hami.gpuSchedulerPolicy=topology-aware \
-  --set scheduler.hami.gpuSharePercent=100 \
-  --set model.name=Qwen/Qwen2.5-0.5B-Instruct \
-  --set model.type=chat \
-  --set persistence.enabled=true \
-  --set persistence.mountPath=/root/.cache/huggingface \
-  --set extraEnv[0].name=http_proxy \
-  --set extraEnv[0].value=http://192.168.3.42:7890 \
-  --set extraEnv[1].name=https_proxy \
-  --set extraEnv[1].value=http://192.168.3.42:7890
-
-kubectl -n llm-serving get pod -o wide
-kubectl -n llm-serving describe pod -l app.kubernetes.io/instance=vllm-hami-chat
-kubectl -n llm-serving logs -l app.kubernetes.io/instance=vllm-hami-chat --tail=200
-kubectl -n llm-serving port-forward deploy/vllm-hami-chat-vllm-inference 18000:8000
-curl http://127.0.0.1:18000/health
-curl http://127.0.0.1:18000/v1/chat/completions \
-  -H 'Content-Type: application/json' \
-  -d '{"model":"Qwen/Qwen2.5-0.5B-Instruct","messages":[{"role":"user","content":"reply with HAMI_OK"}]}'
+git clone https://github.com/volcano-sh/volcano.git
+cd volcano
+kubectl apply -f installer/volcano-development.yaml
+kubectl get pods -n volcano-system
 ```
 
-### ENV-42 Volcano PodGroup smoke
+Minimum readiness check:
 
 ```bash
-helm upgrade --install vllm-volcano-chat ./charts/vllm-inference \
-  -n llm-serving --create-namespace \
+kubectl get pods -n volcano-system
+kubectl get crd | rg 'volcano|podgroups|queues'
+kubectl get svc -n volcano-system
+```
+
+Cluster expectations before testing this repo:
+
+- `volcano-scheduler` is Running
+- `PodGroup` and `Queue` CRDs exist
+- queue admission is configured for your namespace
+- if testing binpack behavior, the scheduler profile enables the relevant plugin
+
+### Volcano Scenario V-01: Scheduler Smoke Test
+
+Goal:
+
+- prove a repo chart can target Volcano and render its core objects
+
+Command template:
+
+```bash
+helm install vllm-volcano-smoke ./charts/vllm-inference \
+  --namespace llm-serving --create-namespace \
+  --set image.repository=test/vllm \
+  --set image.tag=latest \
   --set scheduler.type=volcano \
   --set scheduler.volcano.createPodGroup=true \
-  --set scheduler.volcano.groupMinMember=1 \
-  --set scheduler.volcano.queueName=default \
-  --set model.name=Qwen/Qwen2.5-0.5B-Instruct
-
-kubectl -n llm-serving get podgroup
-kubectl -n llm-serving get podgroup vllm-volcano-chat-vllm-inference -o yaml
-kubectl -n llm-serving describe pod -l app.kubernetes.io/instance=vllm-volcano-chat
-kubectl -n llm-serving get events --sort-by=.lastTimestamp | tail -n 50
+  --set scheduler.volcano.groupMinMember=1
 ```
 
-### ENV-27 Hami TP=2 smoke
+Success:
+
+- Deployment has `schedulerName: volcano`
+- `PodGroup` exists
+- pod is scheduled or remains Pending for a scheduler reason that matches the requested resources
+
+### Volcano Scenario V-02: Gang Scheduling
+
+Goal:
+
+- verify that replicas wait as a group instead of partially starting
+
+Recommended target:
+
+- `ENV-27` first
+- `ENV-42` second
+
+Suggested config:
 
 ```bash
-helm upgrade --install vllm-hami-tp2 ./charts/vllm-inference \
-  -n llm-serving --create-namespace \
+helm install vllm-volcano-gang ./charts/vllm-inference \
+  --namespace llm-serving \
+  --set model.name=Qwen/Qwen2.5-7B-Instruct \
+  --set replicaCount=2 \
+  --set resources.limits.nvidia\.com/gpu=1 \
+  --set scheduler.type=volcano \
+  --set scheduler.volcano.createPodGroup=true \
+  --set scheduler.volcano.groupMinMember=2 \
+  --set scheduler.volcano.queueName=gpu-queue
+```
+
+Checks:
+
+- `kubectl get podgroup -n llm-serving`
+- `kubectl describe podgroup vllm-volcano-gang`
+- both pods stay Pending until all resources are satisfiable, or both transition together
+- no single replica becomes the only Running member when `minMember=2`
+
+Pass criteria:
+
+- `PodGroup.spec.minMember=2`
+- scheduler events mention group admission rather than per-pod native scheduling
+
+Failure categories to record:
+
+- queue admission blocked
+- insufficient GPUs
+- kubelet/device-plugin admission failure after Volcano binding
+
+### Volcano Scenario V-03: Queue Management
+
+Goal:
+
+- prove queue selection and queue-level control work with repo charts
+
+Prerequisite:
+
+- create explicit queues in Volcano
+
+Example:
+
+```yaml
+apiVersion: scheduling.volcano.sh/v1beta1
+kind: Queue
+metadata:
+  name: gpu-queue
+spec:
+  weight: 1
+  reclaimable: true
+  capability:
+    cpu: "64"
+    memory: "256Gi"
+    nvidia.com/gpu: "8"
+```
+
+Test cases:
+
+- deploy one release to `gpu-queue`
+- deploy one release to `default`
+- oversubscribe `gpu-queue` and verify only in-queue work is admitted within queue quota
+- set `scheduler.volcano.minResources` larger than free capacity and verify the `PodGroup` stays queued
+
+Repo-specific Helm knobs:
+
+- `scheduler.volcano.queueName`
+- `scheduler.volcano.minResources.cpu`
+- `scheduler.volcano.minResources.memory`
+
+Pass criteria:
+
+- `PodGroup.spec.queue` matches the Helm value
+- scheduler events mention queue gating when blocked
+
+### Volcano Scenario V-04: Binpack Placement
+
+Goal:
+
+- verify Volcano can prefer dense packing when the cluster policy enables binpack
+
+Why this matters here:
+
+- TP and multi-replica inference often benefit from predictable packing on fewer nodes
+
+Cluster prerequisite:
+
+- Volcano scheduler config enables the `binpack` plugin for the active queue/profile
+
+Suggested workload pair:
+
+- deploy two single-GPU `vllm-inference` releases
+- deploy one 2-GPU release after that
+
+Checks:
+
+- compare selected nodes for the three workloads
+- if the cluster has multiple GPU nodes, verify whether Volcano packs onto the busiest eligible node instead of spreading
+- if the result differs, capture the scheduler policy and node free-resource state before calling it a chart issue
+
+Important repo boundary:
+
+- the chart only tells Kubernetes to use Volcano and creates `PodGroup`
+- actual binpack behavior is a cluster scheduler policy concern, not a Helm templating concern
+
+## HAMi Scheduler
+
+### What HAMi Is
+
+HAMi is a heterogeneous device scheduler and virtualization layer for Kubernetes. In this repo, it matters because:
+
+- it supplies `schedulerName: hami-scheduler`
+- it supports GPU sharing and device-level placement
+- it exposes policy annotations for node and GPU scheduling
+- it supports GPU UUID pinning and vGPU memory/core limits
+
+Repo knobs relevant to HAMi:
+
+- `scheduler.type=hami`
+- `scheduler.hami.gpuSharePercent`
+- `scheduler.hami.nodeSchedulerPolicy`
+- `scheduler.hami.gpuSchedulerPolicy`
+- `scheduler.annotations.*` for cluster-specific HAMi keys such as `nvidia.com/use-gpuuuid`
+
+### How To Deploy HAMi
+
+Official upstream project:
+
+- `Project-HAMi/HAMi`
+
+Typical install flow:
+
+```bash
+git clone https://github.com/Project-HAMi/HAMi.git
+cd HAMi
+helm install hami hami-charts/hami \
+  -n kube-system --create-namespace
+kubectl get pods -n kube-system | rg hami
+```
+
+Minimum readiness check:
+
+```bash
+kubectl get pods -n kube-system
+kubectl get ds -A | rg 'hami|vgpu'
+kubectl get nodes -o custom-columns=NAME:.metadata.name,GPUMEM:.status.allocatable.nvidia\\.com/gpumem-percentage
+```
+
+Cluster expectations before testing this repo:
+
+- `hami-scheduler` is Running
+- HAMi device plugin DaemonSet is Running on GPU nodes
+- GPU nodes advertise the expected allocatable resources
+
+### HAMi Scenario H-01: Scheduler Smoke Test
+
+Goal:
+
+- prove a repo chart targets `hami-scheduler` correctly
+
+Command template:
+
+```bash
+helm install llamacpp-hami-smoke ./charts/llamacpp-inference \
+  --namespace llm-serving --create-namespace \
+  --set scheduler.type=hami \
+  --set gpuType=nvidia \
+  --set model.name=Qwen/Qwen2.5-0.5B-Instruct-GGUF \
+  --set model.ggufFile=qwen2.5-0.5b-instruct-q4_k_m.gguf
+```
+
+Pass criteria:
+
+- pod spec shows `schedulerName: hami-scheduler`
+- scheduling events are emitted by HAMi
+
+### HAMi Scenario H-02: vGPU Sharing
+
+Goal:
+
+- verify multiple workloads can share one physical GPU through HAMi limits
+
+Recommended target:
+
+- `ENV-42`
+
+Suggested `vllm-inference` values:
+
+```bash
+helm install vllm-hami-share-a ./charts/vllm-inference \
+  --namespace llm-serving \
+  --set scheduler.type=hami \
+  --set model.name=Qwen/Qwen2.5-0.5B-Instruct \
+  --set resources.limits.nvidia\.com/gpu=1 \
+  --set scheduler.hami.gpuSharePercent=50
+
+helm install vllm-hami-share-b ./charts/vllm-inference \
+  --namespace llm-serving \
+  --set scheduler.type=hami \
+  --set model.name=Qwen/Qwen2.5-0.5B-Instruct \
+  --set resources.limits.nvidia\.com/gpu=1 \
+  --set scheduler.hami.gpuSharePercent=50
+```
+
+Checks:
+
+- both pods schedule successfully
+- allocation annotations identify either the same physical GPU or compatible shared allocation according to HAMi
+- neither pod is admitted beyond the configured share policy
+
+Pass criteria:
+
+- pod resources render `nvidia.com/gpumem-percentage`
+- HAMi annotations or events prove the shared-device allocation
+
+### HAMi Scenario H-03: Device Isolation With GPU UUID Pinning
+
+Goal:
+
+- prove a workload can be forced onto a specific GPU and kept off others
+
+Recommended target:
+
+- `ENV-42`, because repo evidence already includes a known allocated GPU UUID there
+
+Suggested values:
+
+```bash
+helm install vllm-hami-isolated ./charts/vllm-inference \
+  --namespace llm-serving \
+  --set scheduler.type=hami \
+  --set model.name=Qwen/Qwen2.5-0.5B-Instruct \
+  --set resources.limits.nvidia\.com/gpu=1 \
+  --set-string scheduler.annotations.nvidia\.com/use-gpuuuid=GPU-REPLACE-ME
+```
+
+Checks:
+
+- pod annotation keeps the requested UUID
+- actual allocated device matches that UUID
+- a second pod pinned to a different UUID lands elsewhere or remains Pending when unavailable
+
+Pass criteria:
+
+- device binding is deterministic and auditable from pod annotations/events
+
+### HAMi Scenario H-04: Node And GPU Policy Validation
+
+Goal:
+
+- verify repo values for node and GPU policy affect placement
+
+Suggested values:
+
+```bash
+helm install vllm-hami-binpack ./charts/vllm-inference \
+  --namespace llm-serving \
   --set scheduler.type=hami \
   --set scheduler.hami.nodeSchedulerPolicy=binpack \
-  --set scheduler.hami.gpuSchedulerPolicy=topology-aware \
-  --set model.name=Qwen/Qwen2.5-7B-Instruct \
-  --set model.type=chat \
-  --set engine.tensorParallelSize=2 \
-  --set resources.limits.nvidia.com/gpu=2 \
-  --set shm.enabled=true \
-  --set shm.sizeLimit=8Gi
-
-kubectl -n llm-serving get pod -o wide
-kubectl -n llm-serving describe pod -l app.kubernetes.io/instance=vllm-hami-tp2
-kubectl -n llm-serving logs -l app.kubernetes.io/instance=vllm-hami-tp2 --tail=200
+  --set scheduler.hami.gpuSchedulerPolicy=spread \
+  --set resources.limits.nvidia\.com/gpu=1
 ```
 
-### Evidence collection bundle
+Checks:
+
+- pod annotations include:
+  - `hami.io/node-scheduler-policy=binpack`
+  - `hami.io/gpu-scheduler-policy=spread`
+- placement changes when re-run with the opposite policy pair
+
+Important repo boundary:
+
+- only `vllm-inference` currently renders the explicit HAMi node/GPU policy annotations
+- `sglang-inference` and `llamacpp-inference` still rely on generic `scheduler.annotations.*` for cluster-specific HAMi keys
+
+## `volcano-vgpu-device-plugin`
+
+### What It Is
+
+`volcano-vgpu-device-plugin` is the Volcano-side NVIDIA vGPU device plugin used with Volcano device sharing. It complements Volcano scheduling by advertising and allocating vGPU-style resources on GPU nodes.
+
+In practical terms:
+
+- Volcano handles queueing, gang, and scheduling
+- the vGPU device plugin handles GPU resource advertisement and device allocation
+
+### How To Deploy It
+
+Upstream project:
+
+- `Project-HAMi/volcano-vgpu-device-plugin`
+
+Typical install flow:
 
 ```bash
-kubectl -n llm-serving get pod -o wide > evidence-pods.txt
-kubectl -n llm-serving get events --sort-by=.lastTimestamp > evidence-events.txt
-kubectl -n llm-serving get podgroup -o yaml > evidence-podgroups.yaml
-kubectl -n llm-serving get deploy -o yaml > evidence-deployments.yaml
+git clone https://github.com/Project-HAMi/volcano-vgpu-device-plugin.git
+cd volcano-vgpu-device-plugin
+kubectl apply -f ./volcano-vgpu-device-plugin.yml
+kubectl get pods -n kube-system | rg 'volcano|vgpu'
 ```
 
-## Exit Criteria
+Minimum readiness check:
 
-The repository can be called “tested” only when all of the following are true:
+```bash
+kubectl get ds -A | rg 'volcano|vgpu'
+kubectl get nodes -o yaml | rg 'volcano.sh/vgpu|volcano\.sh'
+```
 
-- static render tests pass
-- at least one real Hami-scheduled `vllm-inference` deployment returns real inference on ENV-42
-- at least one real Hami-scheduled `vllm-inference` deployment returns real inference on ENV-27
-- Volcano behavior is recorded with real `PodGroup` and scheduler evidence
-- unsupported or blocked scenarios are marked explicitly as:
-  - environment limitation
-  - scheduler limitation
-  - chart bug
-- all fixes are committed in-repo
+Cluster expectations:
 
-## Reference Links
+- Volcano is already installed
+- GPU nodes expose the Volcano vGPU allocatable resources after the plugin starts
 
-- vLLM serve CLI: <https://docs.vllm.ai/en/latest/cli/serve/>
-- vLLM quantization support matrix: <https://docs.vllm.ai/en/stable/features/quantization/>
-- HAMi scheduler policy: <https://project-hami.io/docs/developers/scheduling/>
-- HAMi device memory allocation: <https://project-hami.io/docs/userguide/nvidia-device/specify-device-memory-usage>
-- HAMi assign task to a certain GPU: <https://project-hami.io/docs/userguide/nvidia-device/examples/specify-certain-card/>
-- HAMi dynamic MIG support: <https://project-hami.io/docs/userguide/nvidia-device/dynamic-mig-support>
-- Volcano PodGroup: <https://volcano.sh/en/docs/podgroup/>
-- Volcano queue: <https://volcano.sh/en/docs/queue/>
-- Volcano unified scheduling: <https://volcano.sh/en/docs/v1-12-0/unified_scheduling/>
+### Plugin Scenario P-01: Resource Advertisement
+
+Goal:
+
+- verify GPU nodes advertise Volcano-managed vGPU resources
+
+Checks:
+
+- `kubectl describe node <gpu-node>` shows Volcano vGPU resource keys
+- device plugin logs show successful device registration
+
+Pass criteria:
+
+- allocatable resources exist before any repo workload is submitted
+
+### Plugin Scenario P-02: Volcano + vGPU Workload Integration
+
+Goal:
+
+- prove a Volcano-scheduled workload can consume vGPU resources on actual GPU nodes
+
+Recommended target:
+
+- `ENV-42` first for smoke validation
+- `ENV-27` for larger multi-workload validation
+
+Suggested approach:
+
+- use `vllm-inference` with `scheduler.type=volcano`
+- inject plugin-specific resource requests through chart resource overrides or scheduler annotations used by your cluster
+- keep `scheduler.volcano.createPodGroup=true` so queue/gang behavior remains visible
+
+Checks:
+
+- pod is bound by Volcano
+- kubelet/device plugin admits the requested vGPU allocation
+- allocation is visible in node or pod-level evidence
+
+Record separately if failure happens at:
+
+- Volcano queue admission
+- podgroup gang admission
+- device-plugin allocation
+- kubelet post-bind admission
+
+### Plugin Scenario P-03: Gang Scheduling With vGPU Resources
+
+Goal:
+
+- verify a multi-replica Volcano workload does not partially admit when the vGPU plugin cannot satisfy all members
+
+Suggested config:
+
+- `replicaCount=2`
+- `scheduler.volcano.groupMinMember=2`
+- vGPU resource request sized so only one replica fits
+
+Pass criteria:
+
+- no single replica starts alone
+- `PodGroup` remains queued or pending until the full gang is feasible
+
+## Actual-Node Execution Plan
+
+### Phase 1: `ENV-42` Real Validation
+
+Run these first because the repo already contains evidence from this node:
+
+1. HAMi smoke test
+2. HAMi vGPU sharing
+3. HAMi UUID isolation
+4. Volcano smoke test
+5. Volcano gang scheduling with 2 small replicas
+6. Volcano queue gating with explicit `Queue`
+7. Volcano + vGPU plugin smoke test
+
+Expected outcomes on `ENV-42`:
+
+- strongest value for scheduler correctness and reproducibility
+- weaker value for large TP and high-memory model success due to `8 x RTX 2080 Ti`
+
+### Phase 2: `ENV-27` Scale Validation
+
+Run these next:
+
+1. Volcano gang scheduling with larger models
+2. Volcano binpack across multiple GPU nodes if the cluster exposes them
+3. HAMi TP=2 or TP=4 scheduling
+4. Volcano + vGPU plugin saturation tests
+
+Expected outcomes on `ENV-27`:
+
+- better chance of completing real TP and large-model scenarios
+- better target for queue/binpack tests that need more free GPU headroom
+
+## Pass/Fail Rules
+
+Treat as chart failure when:
+
+- a Helm value does not render into the expected manifest field
+- the repo chart prevents the scheduler/plugin from receiving the needed config
+
+Treat as environment or cluster-policy failure when:
+
+- Volcano queue policy blocks admission but manifests are correct
+- HAMi or vGPU plugin does not advertise resources correctly
+- runtime image or driver compatibility blocks startup after successful scheduling
+- the node simply does not have enough free GPU resources
+
+## Quick Mapping From Repo Values To Scheduler Behavior
+
+| Repo value | Scheduler path | Runtime effect to validate |
+|---|---|---|
+| `scheduler.type=volcano` | Volcano | pod uses Volcano scheduler |
+| `scheduler.volcano.createPodGroup=true` | Volcano | gang object is created |
+| `scheduler.volcano.groupMinMember` | Volcano | minimum gang size for admission |
+| `scheduler.volcano.queueName` | Volcano | queue assignment |
+| `scheduler.volcano.minResources.*` | Volcano | queue/admission gating |
+| `scheduler.type=hami` | HAMi | pod uses `hami-scheduler` |
+| `scheduler.hami.gpuSharePercent` | HAMi | GPU memory-share request |
+| `scheduler.hami.nodeSchedulerPolicy` | HAMi | node packing/spread preference |
+| `scheduler.hami.gpuSchedulerPolicy` | HAMi | GPU-level packing/spread/topology preference |
+| `scheduler.annotations.nvidia.com/use-gpuuuid` | HAMi | deterministic device isolation |
+
+## Related Files
+
+- `tests/volcano_test.py`
+- `tests/hami_test.py`
+- `tests/vllm_chart_test.py`
+- `TEST_REPORT.md`
+- `charts/vllm-inference/README.md`
+- `charts/sglang-inference/README.md`
+- `charts/llamacpp-inference/README.md`
