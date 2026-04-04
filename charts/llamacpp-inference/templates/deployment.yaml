@@ -33,9 +33,18 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
+      {{- if .Values.runtimeClassName }}
+      runtimeClassName: {{ .Values.runtimeClassName }}
+      {{- end }}
       {{- $schedulerName := include "llamacpp-inference.schedulerName" . }}
       {{- if $schedulerName }}
       schedulerName: {{ $schedulerName }}
+      {{- end }}
+      {{- if .Values.priorityClassName }}
+      priorityClassName: {{ .Values.priorityClassName }}
+      {{- end }}
+      {{- if .Values.terminationGracePeriodSeconds }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
       {{- end }}
       serviceAccountName: {{ include "llamacpp-inference.serviceAccountName" . }}
       securityContext:
@@ -100,7 +109,7 @@ spec:
         volumeMounts:
         {{- if .Values.persistence.enabled }}
         - name: model-cache
-          mountPath: /root/.cache/huggingface
+          mountPath: {{ .Values.persistence.mountPath }}
         {{- end }}
         {{- if .Values.shm.enabled }}
         - name: dshm

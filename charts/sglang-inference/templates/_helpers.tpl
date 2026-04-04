@@ -88,6 +88,9 @@ Build vLLM command arguments
 {{- if .Values.model.hfToken }}
 {{- $args = append $args (printf "--hf-token %s" .Values.model.hfToken) }}
 {{- end }}
+{{- if .Values.model.reasoningParser }}
+{{- $args = append $args (printf "--reasoning-parser %s" .Values.model.reasoningParser) }}
+{{- end }}
 {{- if .Values.engine.tensorParallelSize }}
 {{- $args = append $args (printf "--tensor-parallel-size %d" (int .Values.engine.tensorParallelSize)) }}
 {{- end }}

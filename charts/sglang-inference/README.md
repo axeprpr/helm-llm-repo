@@ -1,126 +1,41 @@
-# vLLM Inference Helm Chart
+# SGLang Inference Helm Chart
 
-High-throughput LLM inference using [vLLM](https://docs.vllm.ai/) engine with OpenAI-compatible API.
-
-## Features
-
-- 🚀 **OpenAI-compatible API** - Drop-in replacement for OpenAI API
-- 🖥️ **Multi-GPU** - Tensor parallelism support (1-N GPUs)
-- 🌐 **Multi-node** - Pipeline parallelism for distributed inference
-- 🔧 **Flexible scheduling** - Native K8s, Hami, Volcano schedulers
-- ⚡ **GPU variety** - NVIDIA, AMD, Ascend support via tolerations
-- 📦 **Model formats** - HuggingFace, AWQ, GPTQ, GGUF
+Deploy [SGLang](https://docs.sglang.ai/) with an OpenAI-compatible API on Kubernetes.
 
 ## Quick Start
 
 ```bash
-# Add repo
 helm repo add llm-center https://axeprpr.github.io/helm-llm-repo
 helm repo update
 
-# Install vLLM with Qwen2.5-7B
-helm install qwen7b llm-center/vllm-inference \
+helm install sglang-smoke llm-center/sglang-inference \
   --set model.name=Qwen/Qwen2.5-7B-Instruct \
-  --set resources.limits.nvidia.com/gpu=1
-
-# Install with custom model
-helm install mymodel llm-center/vllm-inference \
-  --set model.name=meta-llama/Llama-3.3-70B-Instruct \
-  --set engine.tensorParallelSize=2 \
-  --set resources.limits.nvidia.com/gpu=2
-```
-
-## API Usage
-
-```bash
-# Chat completions (OpenAI compatible)
-curl http://qwen7b-api:8000/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "Qwen/Qwen2.5-7B-Instruct",
-    "messages": [{"role": "user", "content": "Hello!"}]
-  }'
-
-# Health check
-curl http://qwen7b-api:8000/health
+  --set scheduler.type=hami \
+  --set resources.limits.nvidia\.com/gpu=1 \
+  --set extraEnv[0].name=http_proxy \
+  --set extraEnv[0].value=http://192.168.3.42:7890 \
+  --set extraEnv[1].name=https_proxy \
+  --set extraEnv[1].value=http://192.168.3.42:7890
 ```
 
 ## Key Values
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `model.name` | HuggingFace model ID | `Qwen/Qwen2.5-7B-Instruct` |
-| `model.format` | Model format (auto/fp16/bf16/awq/gptq) | `auto` |
-| `engine.port` | API server port | `8000` |
-| `engine.tensorParallelSize` | GPUs per node | `1` |
-| `engine.pipelineParallelSize` | Pipeline stages | `1` |
-| `engine.maxModelLen` | Max sequence length | `8192` |
-| `engine.gpuMemoryUtilization` | GPU memory fraction | `0.90` |
-| `gpuType` | GPU vendor (nvidia/amd/ascend) | `nvidia` |
-| `scheduler.type` | Scheduler (native/hami/volcano) | `native` |
-| `replicaCount` | Number of replicas | `1` |
-| `autoscaling.enabled` | Enable HPA | `false` |
+| `model.name` | Hugging Face model ID or local model path | `Qwen/Qwen2.5-7B-Instruct` |
+| `model.reasoningParser` | Reasoning parser (`deepseek_r1`, `qwen3`) | `""` |
+| `engine.port` | OpenAI-compatible API port | `8000` |
+| `engine.tensorParallelSize` | Tensor parallel size | `1` |
+| `engine.pipelineParallelSize` | Pipeline parallel size | `1` |
+| `engine.maxModelLen` | Maximum context length | `8192` |
+| `engine.gpuMemoryUtilization` | Fraction of GPU memory to use | `0.90` |
+| `scheduler.type` | Scheduler (`native`, `hami`, `volcano`) | `native` |
+| `extraEnv` | Extra environment variables for proxy or auth | `[]` |
+| `persistence.enabled` | Enable PVC-backed model cache | `false` |
 
-## Multi-GPU (Tensor Parallelism)
+## Notes
 
-```bash
-helm install qwen72b llm-center/vllm-inference \
-  --set model.name=Qwen/Qwen2.5-72B-Instruct \
-  --set engine.tensorParallelSize=4 \
-  --set resources.limits.nvidia.com/gpu=4
-```
-
-## Multi-Node (Distributed Inference)
-
-```bash
-helm install qwen72b llm-center/vllm-inference \
-  --set model.name=Qwen/Qwen2.5-72B-Instruct \
-  --set distributed.enabled=true \
-  --set distributed.nodeList={node1,node2,node3,node4} \
-  --set distributed.masterAddr=node1 \
-  --set engine.tensorParallelSize=4 \
-  --set engine.pipelineParallelSize=2
-```
-
-## Hami Scheduler (Xiaohongshu)
-
-```bash
-helm install qwen7b llm-center/vllm-inference \
-  --set scheduler.type=hami \
-  --set scheduler.annotations.nvidia.com/'{resource-name}': nvidia.com/gpu \
-  --set scheduler.annotations.hami.io/'{resource-name}': nvidia.com/gpu
-```
-
-## Volcano Scheduler (Huawei)
-
-```bash
-helm install qwen7b llm-center/vllm-inference \
-  --set scheduler.type=volcano \
-  --set scheduler.annotations.scheduling.k8s.io/'group-name': vllm-job
-```
-
-## Model Formats
-
-### AWQ Quantized
-```yaml
-model:
-  name: "Qwen/Qwen2.5-7B-Instruct-AWQ"
-  format: awq
-```
-
-### GPTQ Quantized
-```yaml
-model:
-  name: "Qwen/Qwen2.5-7B-Instruct-GPTQ"
-  format: gptq
-```
-
-## Resources
-
-| GPU Count | Recommended Model | Max Model Length |
-|-----------|------------------|-----------------|
-| 1x H100 80GB | 70B | 32k |
-| 1x A100 40GB | 30B | 16k |
-| 1x A10G 24GB | 7B | 8k |
-| 4x A100 40GB | 70B | 16k |
-| 8x H100 80GB | 405B | 32k |
+- The default image tag is pinned to `v0.5.9-cu129-amd64-runtime` because `lmsysorg/sglang:latest` required a newer CUDA runtime than the tested RTX 2080 Ti node driver accepted.
+- `extraEnv` is the supported way to inject outbound proxy settings.
+- If you use a local proxy on `192.168.3.42`, prefer lowercase `http_proxy` and `https_proxy`.
+- For HAMI, provide the scheduler annotations required by your cluster.

@@ -238,27 +238,35 @@ Release used:
 
 - `sglang-smoke`
 - HAMI scheduler with explicit GPU UUID pin to GPU `7`
-- image `lmsysorg/sglang:latest`
+- proxy envs `http_proxy` and `https_proxy` set to `http://192.168.3.42:7890`
+- image `lmsysorg/sglang:latest`, then compatibility retry with `lmsysorg/sglang:v0.5.9-cu129-amd64-runtime`
 - model `Qwen/Qwen2.5-0.5B-Instruct`
 
 Observed chart/runtime behavior:
 
 - After chart fixes, HAMI scheduling and GPU UUID binding worked correctly.
 - The pod was created and assigned to `axe-master`.
-- Image pull failed before container startup.
+- Lowercase proxy env injection rendered correctly in the live pod spec.
+- `lmsysorg/sglang:latest` now pulls on this host, but crashes before process start.
+- A pinned `v0.5.9-cu129-amd64-runtime` image gets past the earlier CUDA prestart rejection and begins pulling normally on this node.
 
-Final pull error:
+Final observed `latest` error:
 
-- `Failed to pull image "lmsysorg/sglang:latest"`
-- container runtime tried mirror URL `https://docker.1ms.run/...`
-- mirror resolution failed with:
-  - `lookup docker.1ms.run on 127.0.0.53:53: ... i/o timeout`
+- `nvidia-container-cli: requirement error: unsatisfied condition: cuda>=12.9`
+- host driver on `axe-master` is `570.211.01`
+- result: container never reaches the `python -m sglang ...` process when using `latest`
+
+Pinned-image follow-up:
+
+- `lmsysorg/sglang:v0.5.9-cu129-amd64-runtime` was accepted by the node and advanced to `ContainerCreating`
+- the image was still being pulled at the end of this session, so runtime health was not yet verified
 
 Conclusion:
 
 - The remaining `sglang` failure is not a Helm template failure.
-- It is blocked by the node's current Docker Hub mirror / DNS path.
-- The chart now reaches the real scheduler and runtime boundary cleanly, but this host cannot currently fetch the image.
+- The chart now reaches the real scheduler and runtime boundary cleanly.
+- The bad default was the floating `latest` image tag, which is incompatible with this node's CUDA/driver combination.
+- The chart should use a pinned compatible tag by default and reserve newer tags for explicit operator override.
 
 ## What This Means
 
@@ -271,7 +279,7 @@ The repo is now materially better than before:
 - it renders working llama.cpp image/tag overrides instead of forcing a broken floating CUDA tag,
 - it uses the real `/app/llama-server` binary path,
 - it uses the correct llama.cpp Hugging Face startup flags for GGUF download-on-startup,
-- it uses the correct SGLang upstream image repository by default,
+- it uses the correct SGLang upstream image repository and a pinned non-`latest` default tag,
 - it exposes proxy env injection for real environments that need outbound model/image access.
 
 The remaining failures are not fake-test failures. They are real environment constraints:
@@ -289,7 +297,8 @@ To finish the originally requested PASS matrix, one of these must change:
 1. Provide a smaller local model or restore outbound access to download one.
 2. Free a second HAMI-allocatable GPU by scaling down or moving the existing `qwen35-35b-predictor` service.
 3. If NVLink is mandatory, free the actual NVLink-connected pair on this host instead of targeting `GPU6/GPU7`.
-4. Fix the node's registry mirror resolution for Docker Hub (`docker.1ms.run`) or pre-pull `lmsysorg/sglang` into containerd.
+4. Let the pinned `v0.5.9-cu129-amd64-runtime` image finish pulling and then verify `/health`.
+5. If operators need a newer SGLang image than the pinned default, upgrade the node driver/runtime first and only then override `image.tag`.
 
 ## References
 

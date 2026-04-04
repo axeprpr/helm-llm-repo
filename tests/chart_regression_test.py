@@ -60,14 +60,17 @@ def test_extra_env_renders(chart):
         chart,
         {
             **_image_sets(chart),
-            "extraEnv[0].name": "HTTPS_PROXY",
+            "extraEnv[0].name": "http_proxy",
             "extraEnv[0].value": "http://192.168.3.42:7890",
+            "extraEnv[1].name": "https_proxy",
+            "extraEnv[1].value": "http://192.168.3.42:7890",
         },
     )
     docs = parse_yaml_docs(stdout)
     deployment = find_doc(docs, "Deployment")
     env = deployment["spec"]["template"]["spec"]["containers"][0]["env"]
-    assert {"name": "HTTPS_PROXY", "value": "http://192.168.3.42:7890"} in env
+    assert {"name": "http_proxy", "value": "http://192.168.3.42:7890"} in env
+    assert {"name": "https_proxy", "value": "http://192.168.3.42:7890"} in env
 
 
 def test_llamacpp_explicit_image_tag_not_overridden():
@@ -118,3 +121,56 @@ def test_startup_probe_renders(chart):
     probe = deployment["spec"]["template"]["spec"]["containers"][0]["startupProbe"]
     assert probe["failureThreshold"] == 60
     assert probe["periodSeconds"] == 10
+
+
+@pytest.mark.parametrize("chart", ["sglang-inference", "llamacpp-inference"])
+def test_runtime_fields_render(chart):
+    stdout, _ = helm_template(
+        chart,
+        {
+            **_image_sets(chart),
+            "runtimeClassName": "nvidia",
+            "priorityClassName": "high-priority",
+            "terminationGracePeriodSeconds": "15",
+        },
+    )
+    docs = parse_yaml_docs(stdout)
+    spec = find_doc(docs, "Deployment")["spec"]["template"]["spec"]
+    assert spec["runtimeClassName"] == "nvidia"
+    assert spec["priorityClassName"] == "high-priority"
+    assert spec["terminationGracePeriodSeconds"] == 15
+
+
+@pytest.mark.parametrize("chart", ["sglang-inference", "llamacpp-inference"])
+def test_persistence_mount_path_is_configurable(chart):
+    stdout, _ = helm_template(
+        chart,
+        {
+            **_image_sets(chart),
+            "persistence.enabled": "true",
+            "persistence.mountPath": "/models/cache",
+        },
+    )
+    docs = parse_yaml_docs(stdout)
+    mounts = find_doc(docs, "Deployment")["spec"]["template"]["spec"]["containers"][0]["volumeMounts"]
+    assert {"name": "model-cache", "mountPath": "/models/cache"} in mounts
+
+
+def test_sglang_reasoning_parser_renders():
+    stdout, _ = helm_template(
+        "sglang-inference",
+        {
+            **_image_sets("sglang-inference"),
+            "model.reasoningParser": "qwen3",
+        },
+    )
+    docs = parse_yaml_docs(stdout)
+    command = find_doc(docs, "Deployment")["spec"]["template"]["spec"]["containers"][0]["command"][-1]
+    assert "--reasoning-parser qwen3" in command
+
+
+def test_sglang_default_image_is_pinned_off_latest():
+    stdout, _ = helm_template("sglang-inference")
+    docs = parse_yaml_docs(stdout)
+    image = find_doc(docs, "Deployment")["spec"]["template"]["spec"]["containers"][0]["image"]
+    assert image == "lmsysorg/sglang:v0.5.9-cu129-amd64-runtime"

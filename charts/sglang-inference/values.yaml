@@ -5,7 +5,7 @@ replicaCount: 1
 image:
   repository: lmsysorg/sglang
   pullPolicy: IfNotPresent
-  tag: "latest"
+  tag: "v0.5.9-cu129-amd64-runtime"
 
 # Model configuration
 model:
