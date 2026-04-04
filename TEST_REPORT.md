@@ -690,3 +690,80 @@ volumes:
 - **症状**: 大模型启动 > 30s，liveness probe 失败，Pod 重启
 - **修复**: 设置合理的 `startupProbe.initialDelaySeconds=30`, `failureThreshold=30`
 
+
+---
+
+## 2026-04-04 11:15 UTC — Hami + Volcano 配合方式调研
+
+### 关键发现：Hami 和 Volcano vGPU 是两套独立方案
+
+经过对官方文档的调研，发现 Hami 和 Volcano vGPU 是**两条独立的技术路线**，不能简单叠加使用：
+
+#### 方案 A：Hami vGPU（当前集群已部署）
+- **架构**：Hami scheduler（kube-scheduler + Hami extender）+ Hami device plugin
+- **调度**：Pod 指定 `schedulerName: hami-scheduler`
+- **资源**：使用 `nvidia.com/gpu` 资源
+- **GPU 可见性注入**：Hami webhook 只注入 `NVIDIA_VISIBLE_DEVICES`（GPU UUID），**不注入** `CUDA_VISIBLE_DEVICES`
+- **现状**：llama.cpp 正常（直接调用 CUDA），vLLM 异常（pynvml 默认选 GPU 0）
+
+#### 方案 B：Volcano vGPU（需额外安装）
+- **架构**：Volcano scheduler（配置 `deviceshare` plugin）+ Volcano vGPU device plugin
+- **调度**：Pod 指定 `schedulerName: volcano` 或不指定（使用默认 scheduler）
+- **资源**：使用 `volcano.sh/vgpu-number`、`volcano.sh/vgpu-memory`、`volcano.sh/vgpu-cores`
+- **安装方式**：
+  ```bash
+  # 1. 更新 Volcano scheduler 配置，启用 deviceshare plugin
+  kubectl edit cm -n volcano-system volcano-scheduler-configmap
+  # 添加: plugins: - deviceshare (并设置 deviceshare.VGPUEnable: true)
+
+  # 2. 部署 volcano-vgpu-device-plugin
+  kubectl create -f https://raw.githubusercontent.com/Project-HAMi/volcano-vgpu-device-plugin/main/volcano-vgpu-device-plugin.yml
+  ```
+- **Pod 申请示例**：
+  ```yaml
+  resources:
+    limits:
+      volcano.sh/vgpu-number: 1
+      volcano.sh/vgpu-memory: 3000  # 可选：每个 vGPU 3GB 显存
+      volcano.sh/vgpu-cores: 50    # 可选：每个 vGPU 50% 核心
+  ```
+
+### 两者能否配合使用？
+
+**答案：不能简单叠加。** 原因：
+
+1. Hami device plugin 使用 `nvidia.com/gpu` 资源；Volcano vGPU device plugin 使用 `volcano.sh/vgpu-*` 资源
+2. 如果同时安装两个 device plugin，会产生资源冲突
+3. Volcano vGPU 需要 Volcano scheduler 配置 `deviceshare` plugin，这与 Hami 的调度机制完全不同
+
+### 正确的组合方式
+
+| 方案 | Scheduler | Device Plugin | 资源类型 | CUDA_VISIBLE_DEVICES |
+|------|-----------|---------------|---------|---------------------|
+| A（Hami） | `hami-scheduler` | Hami device plugin | `nvidia.com/gpu` | ❌ 不注入 |
+| B（Volcano） | `volcano` | Volcano vGPU device plugin | `volcano.sh/vgpu-*` | ✅ 由 device plugin 注入 |
+
+### 当前集群的实际状态
+
+```
+nvidia.com/gpu: 80        # Hami device plugin 提供
+volcano.sh/vgpu-*: 无      # Volcano vGPU device plugin 未安装
+```
+
+### 如果要用 vLLM + GPU 共享，推荐方案
+
+1. **方案 A（当前 Hami）**：修改 Hami chart，增加 `CUDA_VISIBLE_DEVICES` 注入
+   - 在 Pod template 中加入 initContainer，从 downward API 读取 `nvidia.com/gpu` 分配，然后设置 `CUDA_VISIBLE_DEVICES`
+   - 这个方案改动最小
+
+2. **方案 B（切换到 Volcano vGPU）**：卸载 Hami，安装 Volcano vGPU device plugin
+   - 需要额外部署 `volcano-vgpu-device-plugin`
+   - Pod resource 请求格式改变
+   - **优点**：Volcano 原生支持 gang scheduling、队列、优先级调度
+
+### 下一步建议
+
+1. **短期**：在 vllm-inference chart 中增加 initContainer workaround，注入 `CUDA_VISIBLE_DEVICES`
+2. **中期**：在集群中部署 Volcano vGPU device plugin，切换到方案 B
+3. **长期**：将 Hami chart 贡献 `CUDA_VISIBLE_DEVICES` injection 功能到上游
+
