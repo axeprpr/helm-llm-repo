@@ -596,3 +596,97 @@ $ curl -X POST http://10.0.0.75:8000/v1/chat/completions \
 GPU 7: 595 MiB used (model loaded on RTX 2080 Ti)
 ```
 
+
+---
+
+## 2026-04-04 11:00 UTC — vLLM + Hami 核心问题确认
+
+### 问题现象
+
+vLLM Pod 通过 Hami 调度器分配到 GPU 6（或 7），Pod Running 但：
+1. Hami device plugin 只注入 `NVIDIA_VISIBLE_DEVICES=GPU-UUID`，不注入 `CUDA_VISIBLE_DEVICES`
+2. vLLM 引擎进程启动后，在加载模型阶段 OOM 崩溃（GPU 0 已被 21 GB 占用）
+3. Pod 进入 CrashLoopBackOff
+
+### 根本原因
+
+```
+Hami device plugin 注入: NVIDIA_VISIBLE_DEVICES=GPU-e099b988-...  (UUID)
+vLLM 期望:          CUDA_VISIBLE_DEVICES=6                    (索引)
+```
+
+NVIDIA_VISIBLE_DEVICES 控制 nvidia-container-runtime 的 GPU 可见性，但 PyTorch/vLLM 默认使用 GPU 0（索引 0），即使用户分配了 GPU 6。
+
+### 已验证的事实
+
+| 场景 | 结果 | 原因 |
+|------|------|------|
+| llama.cpp + Hami | ✅ 成功 | llama.cpp 直接调用 CUDA，无 pynvml GPU 检测 |
+| vLLM + Hami | ❌ OOM | pynvml 检测 GPU 失败，fallback 到 GPU 0 |
+| vLLM + `CUDA_VISIBLE_DEVICES=6` extraEnv | ❌ UnexpectedAdmissionError | Hami device plugin 拒绝已设置 CUDA_VISIBLE_DEVICES 的 Pod |
+| vLLM + KServe ISVC | ✅ 成功 | KServe mutating webhook 额外注入了 `CUDA_VISIBLE_DEVICES` |
+
+### RTX 2080 Ti GPU 占用情况（192.168.3.42）
+```
+GPU 0: 21193 MiB (被占用)
+GPU 1: 21655 MiB (被占用)
+GPU 2: 17763 MiB (被占用)
+GPU 3: 20503 MiB (被占用)
+GPU 4: 17763 MiB (被占用)
+GPU 5: 17763 MiB (被占用)
+GPU 6: 0 MiB (空闲，可用于测试)
+GPU 7: 0 MiB (空闲，可用于测试)
+```
+
+### vLLM 修复方案（需要修改 Chart）
+
+在 Pod template 中加入 initContainer，从 Hami 分配的 `NVIDIA_VISIBLE_DEVICES` (UUID) 解析出 GPU 索引，并设置 `CUDA_VISIBLE_DEVICES`：
+
+```yaml
+initContainers:
+  - name: inject-cuda-visible-devices
+    image: vllm/vllm-openai:v0.8.5.post1
+    command: [sh, -c]
+    args:
+      - |
+        # NVIDIA_VISIBLE_DEVICES is set by Hami device plugin as GPU-UUID
+        # Convert UUID to index and export CUDA_VISIBLE_DEVICES
+        NVIDIA_VISIBLE_DEVICES="${NVIDIA_VISIBLE_DEVICES:-all}"
+        if [ "$NVIDIA_VISIBLE_DEVICES" != "all" ]; then
+          GPU_UUID=$(echo $NVIDIA_VISIBLE_DEVICES | cut -d, -f1)
+          # Query index via nvidia-smi
+          GPU_INDEX=$(nvidia-smi -L | grep $GPU_UUID | sed 's/GPU \([0-9]\).*/\1/')
+          echo "GPU UUID=$GPU_UUID -> Index=$GPU_INDEX"
+          echo "CUDA_VISIBLE_DEVICES=$GPU_INDEX" > /env-inject/cuda_env
+        fi
+    env:
+    - name: NVIDIA_VISIBLE_DEVICES
+      valueFrom:
+        fieldRef:
+          fieldPath: spec.containers[0].env[?(@.name==\"NVIDIA_VISIBLE_DEVICES\")].value
+    volumeMounts:
+    - name: env-inject
+      mountPath: /env-inject
+volumes:
+- name: env-inject
+  emptyDir: {}
+```
+
+然后主容器从 `/env-inject/cuda_env` 读取并 `source` 该文件。
+
+### Chart Bug: `gpuMemoryUtilization` + `extraArgs` 渲染问题
+
+#### Bug 1: `%.2f` format string 不兼容整数 helm values
+- **症状**: `--set engine.gpuMemoryUtilization=50` → `--gpu-memory-utilization %!f(int64=50)`
+- **根因**: `printf "%.2f"` 在 helm 传整数时报错
+- **修复**: 改为 `printf "%v"`
+
+#### Bug 2: `extraArgs` 作为单个元素 append
+- **症状**: `--set engine.extraArgs[0]=--dtype --set engine.extraArgs[1]=half` → `--dtype half`（拼接成一个字符串）
+- **根因**: `append $args .Values.engine.extraArgs` 把列表当单个元素加入
+- **修复**: 改为 `concat $args .Values.engine.extraArgs`
+
+#### Bug 3: `startupProbe: {}` 导致 liveness 提前杀死 Pod
+- **症状**: 大模型启动 > 30s，liveness probe 失败，Pod 重启
+- **修复**: 设置合理的 `startupProbe.initialDelaySeconds=30`, `failureThreshold=30`
+
