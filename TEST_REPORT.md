@@ -1,11 +1,11 @@
 # Helm LLM Test Report
 
-Date: 2026-04-03
+Date: 2026-04-04
 Target node: `192.168.3.42` (`axe-master`)
 
 ## Executive Summary
 
-This was a real on-cluster test pass against `charts/vllm-inference`, not a template-only exercise.
+This report now includes the original 2026-04-03 pass plus 2026-04-04 follow-up reruns for `sglang` and `llama.cpp` on the same node.
 
 What was confirmed:
 
@@ -20,6 +20,9 @@ What could not be completed as originally requested:
 - Real single-GPU inference from Helm did not fit on `1 x RTX 2080 Ti`, even after wrapper patches, CPU offload, tiny context, and single-sequence settings.
 - Real TP=2 inference from Helm could not be scheduled without disturbing an existing running service, because HAMI accounting did not actually have two full free GPUs available.
 - `GPU6` and `GPU7` are not an NVLink pair on this host. The real topology is `PIX`, not `NV1`.
+- The current `sglang` default tag `v0.5.9-cu129-amd64-runtime` is still incompatible with this node's NVIDIA runtime and fails before process start with `cuda>=12.9`.
+- A `cu124` retry (`lmsysorg/sglang:v0.4.6.post5-cu124`) is the first tested tag that gets past the NVIDIA prestart hook and starts a real image pull on this node, but the pull did not finish within this session.
+- A fresh `llama.cpp` rerun with the known-good chart config again reached real runtime and started downloading the GGUF model through the proxy, but current transfer speed was too slow to wait through full startup in this session.
 
 ## Chart Bugs Fixed
 
@@ -126,7 +129,7 @@ That proves:
 | SCN-04 | Volcano PodGroup creation | PASS | `PodGroup` created in `llm-serving` and entered `Inqueue` |
 | SCN-05 | Volcano real pod scheduling | PASS for failure reproduction | Volcano scheduled pods to `axe-master`, kubelet rejected them with `UnexpectedAdmissionError` |
 | SCN-06 | llama.cpp HAMI single-GPU inference | PASS | Real `/v1/chat/completions` returned `HELM_LLAMACPP_OK` on GPU `7` |
-| SCN-07 | sglang HAMI single-GPU deployment | BLOCKED by node image-pull path | Pod bound to GPU `7`, then failed pulling `lmsysorg/sglang:latest` via `docker.1ms.run` mirror DNS timeout |
+| SCN-07 | sglang HAMI single-GPU deployment | BLOCKED by image compatibility / pull time | `latest` and `v0.5.9-cu129-amd64-runtime` both fail the NVIDIA prestart hook (`cuda>=12.9`); `v0.4.6.post5-cu124` binds GPU `7` and starts pulling |
 
 ## Detailed Findings
 
@@ -231,6 +234,8 @@ Final verified behavior:
 Conclusion:
 
 - `charts/llamacpp-inference` now works for real single-GPU HAMI deployments on this node once the correct image tag and runtime flags are rendered.
+- A 2026-04-04 rerun with the same image and HAMI UUID pin again passed scheduling, reached `Running`, and started a real GGUF download through the proxy.
+- That rerun did not finish within the session because the current download rate dropped to roughly a few hundred KB/s, so `/health` remained `503` during model fetch rather than exposing a new chart/runtime regression.
 
 ### sglang result
 
@@ -248,7 +253,7 @@ Observed chart/runtime behavior:
 - The pod was created and assigned to `axe-master`.
 - Lowercase proxy env injection rendered correctly in the live pod spec.
 - `lmsysorg/sglang:latest` now pulls on this host, but crashes before process start.
-- A pinned `v0.5.9-cu129-amd64-runtime` image gets past the earlier CUDA prestart rejection and begins pulling normally on this node.
+- A pinned `v0.5.9-cu129-amd64-runtime` image does not solve the node compatibility problem on this host.
 
 Final observed `latest` error:
 
@@ -258,15 +263,22 @@ Final observed `latest` error:
 
 Pinned-image follow-up:
 
-- `lmsysorg/sglang:v0.5.9-cu129-amd64-runtime` was accepted by the node and advanced to `ContainerCreating`
-- the image was still being pulled at the end of this session, so runtime health was not yet verified
+- Re-test on 2026-04-04 with `model=sshleifer/tiny-gpt2` confirmed that `lmsysorg/sglang:v0.5.9-cu129-amd64-runtime` still fails before process start with:
+  - `nvidia-container-cli: requirement error: unsatisfied condition: cuda>=12.9`
+- Compatibility retry `lmsysorg/sglang:v0.4.6.post5-cu124` was the first image that:
+  - passed HAMI scheduling,
+  - bound GPU UUID `GPU-e099b988-e339-e561-2506-0bd2b99201b3`,
+  - avoided the immediate CUDA prestart rejection,
+  - and entered real image pull (`Pulling image "lmsysorg/sglang:v0.4.6.post5-cu124"`).
+- The `cu124` image had not finished pulling by the end of the session, so `/health` and `/v1/completions` were not yet verified.
 
 Conclusion:
 
 - The remaining `sglang` failure is not a Helm template failure.
 - The chart now reaches the real scheduler and runtime boundary cleanly.
-- The bad default was the floating `latest` image tag, which is incompatible with this node's CUDA/driver combination.
-- The chart should use a pinned compatible tag by default and reserve newer tags for explicit operator override.
+- Both the floating `latest` tag and the current pinned `v0.5.9-cu129-amd64-runtime` default are incompatible with this node's CUDA/driver combination.
+- The first tested candidate that passes the runtime compatibility gate here is `lmsysorg/sglang:v0.4.6.post5-cu124`.
+- The chart should not default to a `cu129` image on this host class without verifying the node driver/runtime first.
 
 ## What This Means
 
@@ -297,8 +309,9 @@ To finish the originally requested PASS matrix, one of these must change:
 1. Provide a smaller local model or restore outbound access to download one.
 2. Free a second HAMI-allocatable GPU by scaling down or moving the existing `qwen35-35b-predictor` service.
 3. If NVLink is mandatory, free the actual NVLink-connected pair on this host instead of targeting `GPU6/GPU7`.
-4. Let the pinned `v0.5.9-cu129-amd64-runtime` image finish pulling and then verify `/health`.
-5. If operators need a newer SGLang image than the pinned default, upgrade the node driver/runtime first and only then override `image.tag`.
+4. Verify whether `lmsysorg/sglang:v0.4.6.post5-cu124` fully starts after the image pull completes, then promote that tag only if `/health` and a real completion succeed.
+5. Stop using `v0.5.9-cu129-amd64-runtime` as the assumed-compatible default for this node until the driver/runtime is upgraded.
+6. If operators need a newer SGLang image than a `cu124`-class tag, upgrade the node driver/runtime first and only then override `image.tag`.
 
 ## References
 
