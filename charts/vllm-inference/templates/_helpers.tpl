@@ -62,10 +62,15 @@ vLLM v0.11.0 no longer accepts it via --model.
 */}}
 {{- define "vllm-inference.engineArgs" -}}
 {{- $args := list }}
+{{- $args = append $args (default (include "vllm-inference.defaultModel" .) .Values.model.name) }}
 {{- $args = append $args "--trust-remote-code" }}
 {{- if .Values.model.hfToken }}
 {{- $args = append $args "--hf-token" }}
 {{- $args = append $args .Values.model.hfToken }}
+{{- end }}
+{{- if .Values.model.reasoningParser }}
+{{- $args = append $args "--reasoning-parser" }}
+{{- $args = append $args .Values.model.reasoningParser }}
 {{- end }}
 {{- if .Values.engine.tensorParallelSize }}
 {{- $args = append $args "--tensor-parallel-size" }}
@@ -88,9 +93,12 @@ vLLM v0.11.0 no longer accepts it via --model.
 {{- $args = append $args "--pooler-output-fn" }}
 {{- $args = append $args .Values.engine.poolerType }}
 {{- end }}
+{{- end }}
 {{- if .Values.engine.enablePrefixCaching }}
 {{- $args = append $args "--enable-prefix-caching" }}
 {{- end }}
+{{- if .Values.engine.enableChunkedPrefill }}
+{{- $args = append $args "--enable-chunked-prefill" }}
 {{- end }}
 {{- if .Values.engine.extraArgs }}
 {{- $args = append $args .Values.engine.extraArgs }}
@@ -118,11 +126,22 @@ Create the name for the service account.
 Build unified pod annotations from all sources (scheduler, user, annotations).
 */}}
 {{- define "vllm-inference.podAnnotations" -}}
-{{- $annos := merge
-  (.Values.scheduler.annotations | default dict)
-  (.Values.podAnnotations | default dict)
-  (.Values.annotations | default dict)
--}}
+{{- $annos := dict }}
+{{- with (.Values.scheduler.annotations | default dict) }}
+{{- $annos = merge $annos . }}
+{{- end }}
+{{- with (.Values.podAnnotations | default dict) }}
+{{- $annos = merge $annos . }}
+{{- end }}
+{{- with (.Values.annotations | default dict) }}
+{{- $annos = merge $annos . }}
+{{- end }}
+{{- if and (eq .Values.scheduler.type "hami") .Values.scheduler.hami.nodeSchedulerPolicy }}
+{{- $_ := set $annos "hami.io/node-scheduler-policy" .Values.scheduler.hami.nodeSchedulerPolicy }}
+{{- end }}
+{{- if and (eq .Values.scheduler.type "hami") .Values.scheduler.hami.gpuSchedulerPolicy }}
+{{- $_ := set $annos "hami.io/gpu-scheduler-policy" .Values.scheduler.hami.gpuSchedulerPolicy }}
+{{- end }}
 {{- toYaml $annos }}
 {{- end }}
 {{/*

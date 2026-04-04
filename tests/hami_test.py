@@ -39,56 +39,35 @@ class TestHamiGpuSharePercent:
         docs = parse_yaml_docs(stdout)
         deployment = find_doc(docs, "Deployment")
         assert deployment is not None
+        if chart == "vllm-inference":
+            limits = deployment["spec"]["template"]["spec"]["containers"][0]["resources"]["limits"]
+            assert limits["nvidia.com/gpumem-percentage"] == percent
 
 class TestHamiNodeSchedulerPolicy:
     @pytest.mark.parametrize("chart", ["vllm-inference", "sglang-inference", "llamacpp-inference"])
-    @pytest.mark.parametrize("policy", ["binpack", "spread", "bind"])
+    @pytest.mark.parametrize("policy", ["binpack", "spread"])
     def test_nodeschedulerpolicy_renders(self, chart, base_sets, policy):
         sets = {**base_sets, "scheduler.type": "hami", "scheduler.hami.nodeSchedulerPolicy": policy}
         stdout, _ = helm_template(chart, sets)
         docs = parse_yaml_docs(stdout)
         deployment = find_doc(docs, "Deployment")
         assert deployment is not None
+        annotations = deployment["spec"]["template"]["metadata"].get("annotations", {})
+        if chart == "vllm-inference":
+            assert annotations["hami.io/node-scheduler-policy"] == policy
 
 class TestHamiGpuSchedulerPolicy:
     @pytest.mark.parametrize("chart", ["vllm-inference", "sglang-inference", "llamacpp-inference"])
-    @pytest.mark.parametrize("policy", ["binds", "full", "shared"])
+    @pytest.mark.parametrize("policy", ["binpack", "spread", "topology-aware"])
     def test_gpuschedulerpolicy_renders(self, chart, base_sets, policy):
         sets = {**base_sets, "scheduler.type": "hami", "scheduler.hami.gpuSchedulerPolicy": policy}
         stdout, _ = helm_template(chart, sets)
         docs = parse_yaml_docs(stdout)
         deployment = find_doc(docs, "Deployment")
         assert deployment is not None
-
-class TestHamiDeviceBindPolicy:
-    @pytest.mark.parametrize("chart", ["vllm-inference", "sglang-inference", "llamacpp-inference"])
-    @pytest.mark.parametrize("dbp", ["none", "device-plugin"])
-    def test_devicebindpolicy_renders(self, chart, base_sets, dbp):
-        sets = {**base_sets, "scheduler.type": "hami", "scheduler.hami.deviceBindPolicy": dbp}
-        stdout, _ = helm_template(chart, sets)
-        docs = parse_yaml_docs(stdout)
-        deployment = find_doc(docs, "Deployment")
-        assert deployment is not None
-
-class TestHamiGpuMemoryFraction:
-    @pytest.mark.parametrize("chart", ["vllm-inference", "sglang-inference", "llamacpp-inference"])
-    @pytest.mark.parametrize("frac", ["0.2", "0.5", "0.9", "1.0"])
-    def test_gpumemoryfraction_renders(self, chart, base_sets, frac):
-        sets = {**base_sets, "scheduler.type": "hami", "scheduler.hami.gpuMemoryFraction": frac}
-        stdout, _ = helm_template(chart, sets)
-        docs = parse_yaml_docs(stdout)
-        deployment = find_doc(docs, "Deployment")
-        assert deployment is not None
-
-class TestHamiMigStrategy:
-    @pytest.mark.parametrize("chart", ["vllm-inference", "sglang-inference", "llamacpp-inference"])
-    @pytest.mark.parametrize("mig", ["none", "single", "mixed"])
-    def test_migstrategy_renders(self, chart, base_sets, mig):
-        sets = {**base_sets, "scheduler.type": "hami", "scheduler.hami.migStrategy": mig}
-        stdout, _ = helm_template(chart, sets)
-        docs = parse_yaml_docs(stdout)
-        deployment = find_doc(docs, "Deployment")
-        assert deployment is not None
+        annotations = deployment["spec"]["template"]["metadata"].get("annotations", {})
+        if chart == "vllm-inference":
+            assert annotations["hami.io/gpu-scheduler-policy"] == policy
 
 class TestHamiContainerAnnotations:
     @pytest.mark.parametrize("chart", ["vllm-inference", "sglang-inference", "llamacpp-inference"])

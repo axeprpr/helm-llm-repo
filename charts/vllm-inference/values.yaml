@@ -11,12 +11,16 @@ image:
 model:
   # HuggingFace model ID or local path
   name: "Qwen/Qwen2.5-7B-Instruct"
+  # chat, embedding, vision
+  type: chat
   # Model format: auto, fp8, fp16, bf16, int8, awq, gptq
   format: auto
   # Download on startup (requires internet)
   downloadOnStartup: true
   # HF token for gated models
   hfToken: ""
+  # Reasoning parser for reasoning-capable models
+  reasoningParser: ""
 
 # Engine configuration
 engine:
@@ -26,6 +30,10 @@ engine:
   extraArgs: ""
   # Max model length
   maxModelLen: 8192
+  # Embedding task
+  embeddingTask: embed
+  # Pooling function for embedding models
+  poolerType: last
   # Tensor parallelism (for multi-GPU)
   tensorParallelSize: 1
   # Pipeline parallelism (for multi-node)
@@ -35,7 +43,7 @@ engine:
   # Enable prefix caching
   enablePrefixCaching: false
   # Enable chunked prefill
-  enableChunkedPrell: false
+  enableChunkedPrefill: false
 
 # Multi-node / distributed inference
 distributed:
@@ -65,6 +73,7 @@ scheduler:
   hami:
     nodeSchedulerPolicy: ""
     gpuSchedulerPolicy: ""
+    gpuSharePercent: ""
 
 # GPU hardware type
 gpuType: nvidia
@@ -116,6 +125,7 @@ readinessProbe:
     port: 8000
   initialDelaySeconds: 10
   periodSeconds: 5
+startupProbe: {}
 
 # Autoscaling
 autoscaling:
@@ -139,6 +149,8 @@ podLabels: {}
 # Extra environment
 extraEnv: []
 envFrom: []
+command: []
+args: []
 
 # Runtime and disruption controls
 runtimeClassName: ""
