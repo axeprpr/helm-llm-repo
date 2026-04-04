@@ -13,7 +13,8 @@ model:
   name: "Qwen/Qwen2.5-7B-Instruct"
   # chat, embedding, vision
   type: chat
-  # Model format: auto, fp8, fp16, bf16, int8, awq, gptq
+  # Model format hint. The chart explicitly renders GPTQ/AWQ quantization flags;
+  # other formats rely on the model's own config/defaults.
   format: auto
   # Download on startup (requires internet)
   downloadOnStartup: true

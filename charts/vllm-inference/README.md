@@ -50,7 +50,7 @@ curl http://qwen7b-api:8000/health
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `model.name` | HuggingFace model ID | `Qwen/Qwen2.5-7B-Instruct` |
-| `model.format` | Model format (auto/fp16/bf16/awq/gptq) | `auto` |
+| `model.format` | Model format hint; chart explicitly passes `gptq`/`awq` to vLLM | `auto` |
 | `engine.port` | API server port | `8000` |
 | `engine.tensorParallelSize` | GPUs per node | `1` |
 | `engine.pipelineParallelSize` | Pipeline stages | `1` |
@@ -114,6 +114,10 @@ model:
   name: "Qwen/Qwen2.5-7B-Instruct-GPTQ"
   format: gptq
 ```
+
+Setting `model.format=gptq` or `model.format=awq` makes the chart render the
+matching `vllm serve --quantization ...` flag. Other formats currently depend on
+the model's own config and image defaults.
 
 ## Resources
 

@@ -3,6 +3,43 @@
 Date: 2026-04-04
 Target node: `192.168.3.42` (`axe-master`)
 
+## 2026-04-04 Current Session Status
+
+This session was intended to re-run a real deployment validation for
+`charts/vllm-inference` with:
+
+- scheduler: `hami-scheduler`
+- model: `Qwen/Qwen2.5-0.5B-Instruct-GPTQ` (single GPU)
+- required proof: `helm install`, `kubectl get pods`, and real
+  `/v1/chat/completions` success
+
+What was attempted from the current Codex workspace:
+
+- direct SSH to `root@192.168.3.42` using the provided password
+- fallback check for local `kubectl` / `helm` access from this machine
+
+What blocked execution in this session:
+
+- sandbox network policy rejects outbound sockets, including SSH, with:
+  `socket: Operation not permitted`
+- the local workspace does not have usable `kubectl` or `helm` binaries/config
+
+Result for this session:
+
+- real deployment on `192.168.3.42`: NOT EXECUTED from this environment
+- fallback deployment on `192.168.23.27`: NOT EXECUTED from this environment
+
+Reason:
+
+- the current execution environment cannot reach either target host or cluster,
+  so it cannot produce the required real evidence (`Running` pod and live HTTP
+  inference)
+
+Repo fix prepared in this session:
+
+- `charts/vllm-inference` now renders `--quantization gptq|awq` when
+  `model.format` is set, which is required for the requested GPTQ deployment
+
 ## Executive Summary
 
 This report now includes the original 2026-04-03 pass plus 2026-04-04 follow-up reruns for `sglang` and `llama.cpp` on the same node.

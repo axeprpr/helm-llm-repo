@@ -72,6 +72,10 @@ vLLM v0.11.0 no longer accepts it via --model.
 {{- $args = append $args "--reasoning-parser" }}
 {{- $args = append $args .Values.model.reasoningParser }}
 {{- end }}
+{{- if or (eq .Values.model.format "gptq") (eq .Values.model.format "awq") }}
+{{- $args = append $args "--quantization" }}
+{{- $args = append $args .Values.model.format }}
+{{- end }}
 {{- if .Values.engine.tensorParallelSize }}
 {{- $args = append $args "--tensor-parallel-size" }}
 {{- $args = append $args (printf "%d" (int .Values.engine.tensorParallelSize)) }}
