@@ -279,8 +279,12 @@ HAMi-core（容器内 hook，显存/SM 硬限制）
 
 ### ENV-27（192.168.23.27）
 - **GPU**: 8× NVIDIA H100
-- **现状**: 刚完成 kubeadm 单节点 K8s 初始化（v1.32.13），Flannel CNI，Clash 代理已装
+- **现状**: 单节点 kubeadm Kubernetes v1.32.13 已运行；Volcano v1.10.0 已通过 `kubectl apply -f volcano-development.yaml` 安装，scheduler / controllers / admission 均正常；HAMi v2.7.1 已通过 Helm 安装，`hami-scheduler` 为 Running
 - **适用测试**: 大显存模型推理、Volcano 调度器安装和 gang scheduling、HAMi 安装
+- **备注**:
+  - `hami-device-plugin` DaemonSet 当前 `DESIRED=0`，原因是节点缺少 `gpu=on` label；更关键的是该节点尚未安装 NVIDIA driver
+  - 节点 allocatable 当前没有 `nvidia.com/gpu`，说明 kubelet 未发现可用 GPU 资源
+  - 结论：ENV-27 上 Volcano 和 HAMi 控制面已安装完成，但在 NVIDIA driver 安装前，H100 相关真实 GPU 工作负载无法运行
 
 ---
 
