@@ -85,7 +85,7 @@ vLLM v0.11.0 no longer accepts it via --model.
 {{- $args = append $args (printf "%d" (int .Values.engine.pipelineParallelSize)) }}
 {{- end }}
 {{- $args = append $args "--gpu-memory-utilization" }}
-{{- $args = append $args (printf "%.2f" .Values.engine.gpuMemoryUtilization) }}
+{{- $args = append $args (printf "%v" .Values.engine.gpuMemoryUtilization) }}
 {{- $args = append $args "--max-model-len" }}
 {{- $args = append $args (printf "%d" (int .Values.engine.maxModelLen)) }}
 {{- $args = append $args "--port" }}
@@ -105,7 +105,7 @@ vLLM v0.11.0 no longer accepts it via --model.
 {{- $args = append $args "--enable-chunked-prefill" }}
 {{- end }}
 {{- if .Values.engine.extraArgs }}
-{{- $args = append $args .Values.engine.extraArgs }}
+{{- $args = concat $args .Values.engine.extraArgs }}
 {{- end }}
 {{- join " " $args }}
 {{- end }}

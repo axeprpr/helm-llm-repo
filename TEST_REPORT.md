@@ -358,3 +358,85 @@ To finish the originally requested PASS matrix, one of these must change:
 - Volcano PodGroup docs: <https://volcano.sh/en/docs/podgroup/>
 - SGLang Docker install docs: <https://docs.sglang.ai/start/install.html>
 - llama.cpp container package tags: <https://github.com/ggerganov/llama.cpp/pkgs/container/llama.cpp>
+
+---
+
+## 2026-04-04 Afternoon Session — vLLM Chart Fixes + Real Deployment Attempts
+
+### Bugs Fixed in This Session
+
+#### Bug 1: `gpuMemoryUtilization` format string broken with integer helm values
+- **File**: `charts/vllm-inference/templates/_helpers.tpl`
+- **Symptom**: `helm install --set engine.gpuMemoryUtilization=50` rendered as `--gpu-memory-utilization %!f(int64=50)`
+- **Root cause**: `printf "%.2f"` template fails when helm passes an integer instead of float
+- **Fix**: Changed to `printf "%v"` which accepts both int and float
+
+#### Bug 2: `extraArgs` elements rendered as single string instead of separate args
+- **File**: `charts/vllm-inference/templates/_helpers.tpl`
+- **Symptom**: `--set engine.extraArgs[0]=--dtype --set engine.extraArgs[1]=half` rendered as `--dtype half` as a single concatenated string, causing `vllm: error: unrecognized arguments: [--dtype half]`
+- **Root cause**: `append $args .Values.engine.extraArgs` appends the list as one element
+- **Fix**: Changed to `concat $args .Values.engine.extraArgs`
+
+#### Bug 3: `startupProbe: {}` caused nil probe on GPU 2080 Ti
+- **File**: `charts/vllm-inference/values.yaml`
+- **Symptom**: Large model startup > startupProbe's default 10s × 3 = 30s timeout
+- **Fix**: Replaced with proper `httpGet` probe at `/health:8000` with 30s initialDelay, 30s period, 30× failureThreshold
+
+#### Bug 4: `volumes: []` / `volumeMounts: []` were empty in values.yaml
+- **Symptom**: Model cache from hostPath not accessible inside container
+- **Fix**: Added `volumes` with `hostPath: /mnt/models` and `volumeMounts` at `/HF_cache`
+
+### Real Deployment Attempt — 192.168.3.42 (8× RTX 2080 Ti)
+
+**Model**: `Qwen/Qwen2.5-0.5B-Instruct` (pre-downloaded at `/mnt/models`)
+**Image**: `vllm/vllm-openai:v0.8.5.post1`
+
+#### Attempt 1: Hami scheduler + `--dtype half`
+- **Status**: CrashLoopBackOff
+- **Error**: `torch.OutOfMemoryError` on GPU 0 (vLLM saw all 8 GPUs, not just the Hami-assigned one)
+- **Root cause**: Hami webhook injects `NVIDIA_VISIBLE_DEVICES=GPU-UUID` but NOT `CUDA_VISIBLE_DEVICES`. PyTorch sees all GPUs and defaults to GPU 0, which has other processes using ~17 GiB → OOM on KV cache allocation.
+
+#### Attempt 2: Default scheduler + `CUDA_VISIBLE_DEVICES=6` extraEnv
+- **Status**: `UnexpectedAdmissionError` (Hami device plugin rejects pods with manually set CUDA_VISIBLE_DEVICES)
+- **Note**: Hami device plugin requires pods to NOT set CUDA_VISIBLE_DEVICES manually; it injects it automatically
+
+#### Attempt 3: KServe InferenceService (reference deployment)
+- Existing pod `llm-serving/qwen35-35b-predictor` has `CUDA_VISIBLE_DEVICES=1,0` injected
+- **How**: KServe's own mutating webhook (not Hami's) injects `CUDA_VISIBLE_DEVICES` based on `nvidia.com/gpu` resource requests
+- This means: **vLLM deployments through this helm chart need either KServe runtime or manual CUDA_VISIBLE_DEVICES injection**
+
+### RTX 2080 Ti Hardware Compatibility
+
+- GPU compute capability: **sm_75 (7.5)** — does NOT support bfloat16
+- vLLM v0.8.5+ requires `dtype=half` or `dtype=float16` on sm_75
+- vLLM v0.11+ uses V1 engine which requires compute ≥ 8.0 (sm_80+)
+- **Recommendation**: Use `vllm/vllm-openai:v0.8.5.post1` (last version supporting sm_75) + `--dtype half`
+
+### Key Discovery: Hami Device Plugin Limitation
+
+| Injection target | Hami webhook | KServe webhook | Result |
+|---|---|---|---|
+| `NVIDIA_VISIBLE_DEVICES` | ✅ Injected | ✅ Injected | Sets GPU UUID visibility |
+| `CUDA_VISIBLE_DEVICES` | ❌ NOT injected | ✅ Injected | PyTorch GPU selection |
+
+**Impact**: Pure helm + Hami deployments require manual workaround (e.g., initContainer or post-binding script) to set `CUDA_VISIBLE_DEVICES` matching the Hami-assigned GPU.
+
+### Workaround Options
+
+1. **KServe runtime** (already working in cluster): Use `InferenceService` with `runtime: vllm-qwen35-2080ti`
+2. **InitContainer workaround**: Pre inject `CUDA_VISIBLE_DEVICES` by reading `NVIDIA_VISIBLE_DEVICES` from downward API
+3. **Host path direct** (chosen for this session): nerdctl with `--gpus=X` on host (CNM networking conflict prevents container run)
+
+### 23.27 Environment (8× RTX 4090)
+
+- Not tested in this session — SSH access not confirmed
+- RTX 4090 = sm_89, no bfloat16 limitation, much more capable
+- **Recommended for future testing** once network/SSH access is resolved
+
+### Commit Summary
+
+```
+fix(_helpers.tpl): fix gpuMemoryUtilization format and extraArgs concat
+fix(values.yaml): add startupProbe, volumes, volumeMounts for model cache
+```
+
