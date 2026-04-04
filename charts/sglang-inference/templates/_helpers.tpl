@@ -49,6 +49,17 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
+Create the service account name.
+*/}}
+{{- define "sglang-inference.serviceAccountName" -}}
+{{- if .Values.serviceAccount.create -}}
+{{- default (include "sglang-inference.fullname" .) .Values.serviceAccount.name -}}
+{{- else -}}
+{{- default "default" .Values.serviceAccount.name -}}
+{{- end -}}
+{{- end }}
+
+{{/*
 GPU tolerations based on gpuType
 */}}
 {{- define "sglang-inference.gpuTolerations" -}}
@@ -87,6 +98,9 @@ Build vLLM command arguments
 {{- $args = append $args (printf "--max-model-len %d" (int .Values.engine.maxModelLen)) }}
 {{- if .Values.engine.enablePrefixCaching }}
 {{- $args = append $args "--enable-prefix-caching" }}
+{{- end }}
+{{- if .Values.engine.enableChunkedPrefill }}
+{{- $args = append $args "--enable-chunked-prefill" }}
 {{- end }}
 {{- $args = append $args (printf "--port %d" (int .Values.engine.port)) }}
 {{- if .Values.engine.extraArgs }}

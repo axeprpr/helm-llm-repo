@@ -3,9 +3,9 @@
 replicaCount: 1
 
 image:
-  repository: ghcr.io/lmsys/sglang
+  repository: lmsysorg/sglang
   pullPolicy: IfNotPresent
-  tag: "v0.5.9"
+  tag: "latest"
 
 # Model configuration
 model:
@@ -40,7 +40,7 @@ engine:
   # Enable prefix caching
   enablePrefixCaching: false
   # Enable chunked prefill
-  enableChunkedPrell: false
+  enableChunkedPrefill: false
 
 # Multi-node / distributed inference
 distributed:
@@ -60,6 +60,15 @@ scheduler:
   type: native
   # Scheduler-specific annotations
   annotations: {}
+  volcano:
+    queueName: ""
+    groupMinMember: 0
+    createPodGroup: false
+    minResources: {}
+  hami:
+    nodeSchedulerPolicy: ""
+    gpuSchedulerPolicy: ""
+    gpuSharePercent: ""
 
 # GPU hardware type
 gpuType: nvidia
@@ -122,6 +131,7 @@ readinessProbe:
     port: 8000
   initialDelaySeconds: 10
   periodSeconds: 5
+startupProbe: {}
 
 # Autoscaling
 autoscaling:
@@ -152,6 +162,7 @@ podDisruptionBudget:
 # Pod annotations
 podAnnotations: {}
 podLabels: {}
+extraEnv: []
 
 # Security context
 # Runtime class

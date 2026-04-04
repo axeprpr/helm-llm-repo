@@ -34,14 +34,24 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
+Create the service account name.
+*/}}
+{{- define "llamacpp-inference.serviceAccountName" -}}
+{{- if .Values.serviceAccount.create -}}
+{{- default (include "llamacpp-inference.fullname" .) .Values.serviceAccount.name -}}
+{{- else -}}
+{{- default "default" .Values.serviceAccount.name -}}
+{{- end -}}
+{{- end }}
+
+{{/*
 Select the correct llama.cpp backend image tag based on gpuType.
 References: GPUStack community-inference-backends.yaml
 */}}
 {{- define "llamacpp-inference.backendImage" -}}
-{{- $base := "ghcr.io/ggerganov/llama.cpp" }}
-{{- $tag := "server-cuda" }}
-{{- if .Values.image.tag }}{{- $tag = .Values.image.tag }}{{- end }}
-{{- if .Values.image.autoBackend }}
+{{- $base := .Values.image.repository | default "ghcr.io/ggerganov/llama.cpp" }}
+{{- $tag := .Values.image.tag | default "" }}
+{{- if and .Values.image.autoBackend (not $tag) }}
 {{- if eq .Values.gpuType "nvidia" }}{{- $tag = "server-cuda" }}
 {{- else if eq .Values.gpuType "amd" }}{{- $tag = "server-rocm" }}
 {{- else if eq .Values.gpuType "musa" }}{{- $tag = "server-musa" }}
@@ -58,8 +68,16 @@ References: GPUStack llama.cpp backend config
 */}}
 {{- define "llamacpp-inference.engineArgs" -}}
 {{- $args := list }}
-{{- /* Model path */ -}}
+{{- /* Model source */ -}}
+{{- if .Values.model.downloadOnStartup }}
+{{- $args = append $args "-hf" }}
 {{- if .Values.model.ggufFile }}
+{{- $quant := (trimSuffix ".gguf" .Values.model.ggufFile | splitList "-" | last | upper) }}
+{{- $args = append $args (printf "%s:%s" .Values.model.name $quant) }}
+{{- else }}
+{{- $args = append $args .Values.model.name }}
+{{- end }}
+{{- else if .Values.model.ggufFile }}
 {{- $args = append $args "-m" }}
 {{- $args = append $args (printf "%s/%s" .Values.model.name .Values.model.ggufFile) }}
 {{- else }}
@@ -69,37 +87,39 @@ References: GPUStack llama.cpp backend config
 {{- /* API server */ -}}
 {{- $args = append $args "-fa" }}
 {{- /* Host/Port */ -}}
-{{- $args = append $args "-l" }}
+{{- $args = append $args "--host" }}
+{{- $args = append $args "0.0.0.0" }}
+{{- $args = append $args "--port" }}
 {{- $args = append $args (printf "%d" (int .Values.engine.port)) }}
 {{- /* Context size */ -}}
 {{- if .Values.engine.contextSize }}
-{{- $args = append $args "-c" }}
+{{- $args = append $args "--ctx-size" }}
 {{- $args = append $args (printf "%d" (int .Values.engine.contextSize)) }}
 {{- end }}
 {{- /* GPU layers */ -}}
 {{- if .Values.engine.gpuLayers }}
-{{- $args = append $args "-ngl" }}
+{{- $args = append $args "--n-gpu-layers" }}
 {{- $args = append $args (printf "%d" (int .Values.engine.gpuLayers)) }}
 {{- end }}
-{{- /* Tensor parallelism */ -}}
+{{- /* Tensor parallelism / threads */ -}}
 {{- if and .Values.engine.tensorParallelSize (gt (int .Values.engine.tensorParallelSize) 1) }}
-{{- $args = append $args "-t" }}
+{{- $args = append $args "--split-mode" }}
+{{- $args = append $args "layer" }}
+{{- $args = append $args "--tensor-split" }}
 {{- $args = append $args (printf "%d" (int .Values.engine.tensorParallelSize)) }}
+{{- else if .Values.engine.threads }}
+{{- $args = append $args "--threads" }}
+{{- $args = append $args (printf "%d" (int .Values.engine.threads)) }}
 {{- end }}
 {{- /* Batch size */ -}}
 {{- if .Values.engine.batchSize }}
-{{- $args = append $args "-b" }}
+{{- $args = append $args "--batch-size" }}
 {{- $args = append $args (printf "%d" (int .Values.engine.batchSize)) }}
 {{- end }}
 {{- /* Parallel sequences */ -}}
 {{- if .Values.engine.parallel }}
-{{- $args = append $args "-pt" }}
+{{- $args = append $args "--parallel" }}
 {{- $args = append $args (printf "%d" (int .Values.engine.parallel)) }}
-{{- end }}
-{{- /* Threads (CPU mode) */ -}}
-{{- if .Values.engine.threads }}
-{{- $args = append $args "-t" }}
-{{- $args = append $args (printf "%d" (int .Values.engine.threads)) }}
 {{- end }}
 {{- /* Extra args */ -}}
 {{- if .Values.engine.extraArgs }}

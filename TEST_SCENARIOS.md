@@ -1,273 +1,167 @@
-# Helm LLM Repo - Test Scenarios and Test Cases
+# Helm LLM Test Scenarios
 
-**Date:** 2026-04-03 17:55 UTC
-**Repo:** https://github.com/axeprpr/helm-llm-repo
+Date: 2026-04-03
 
----
+## Scope
 
-## 1. Overview
+This plan covers real deployment validation for `charts/vllm-inference` on `192.168.3.42` (`axe-master`) with:
 
-Comprehensive test scenarios for helm-llm-repo charts (vllm-inference, sglang-inference, llamacpp-inference).
+- Kubernetes `v1.28.9`
+- `volcano` installed
+- `hami-scheduler` installed
+- Image `docker.io/vllm/vllm-openai:v0.11.0-x86_64`
+- Local model path `/opt/models/qwen3.5-35b` exposed in-cluster via PVC `qwen35-35b-model-pvc`
 
-**Scope:** Volcano scheduler, Hami GPU scheduler, vLLM engine, NVLink, and real inference.
-**Environment:** axe-master (192.168.3.42) — 8× RTX 2080 Ti
+## Environment Facts Observed Before Testing
 
----
+- Node: `axe-master`
+- GPU inventory: `8 x RTX 2080 Ti (22 GiB)`
+- Actual `nvidia-smi topo -m` result:
+  - `GPU0 <-> GPU3 = NV1`
+  - `GPU6 <-> GPU7 = PIX`
+  - `GPU5 <-> GPU6 = PHB`
+  - `GPU4 <-> GPU7 = PHB`
+- This means the requested `GPU6/GPU7 NVLink` assumption is not true on this host.
+- The only pre-existing local model on-host was `/opt/models/qwen3.5-35b`.
+- External download from `huggingface.co` timed out from this environment during testing.
 
-## 2. Test Categories
+## Scenarios
 
-### 2.1 Template Rendering Tests (No Cluster Required)
+### SCN-01 Baseline model/runtime sanity check
 
-| TC | Description | Charts | Scheduler | Status |
-|----|-------------|--------|-----------|--------|
-| TC-101 | Basic chart renders | All 3 | native | ✅ PASS |
-| TC-102 | volcano schedulerName set | All 3 | volcano | ✅ PASS |
-| TC-103 | hami schedulerName set | All 3 | hami | ✅ PASS |
-| TC-104 | Volcano PodGroup created | All 3 | volcano+createPodGroup=true | ✅ PASS |
-| TC-105 | Volcano PodGroup NOT created when disabled | All 3 | volcano,createPodGroup=false | ✅ PASS |
-| TC-106 | HPA manifest rendered | vllm | native | ✅ PASS |
-| TC-107 | ServiceMonitor rendered | vllm | native | ✅ PASS |
-| TC-108 | ConfigMap model catalog rendered | vllm | native | ✅ PASS |
-| TC-109 | Shared memory /dev/shm rendered | vllm | any | ✅ PASS |
-| TC-110 | GPU tolerations nvidia | All 3 | any | ✅ PASS |
-| TC-111 | GPU tolerations amd | All 3 | any | ✅ PASS |
-| TC-112 | GPU tolerations ascend | All 3 | any | ✅ PASS |
-| TC-113 | TP=2 engine arg correct | vllm | any | ✅ PASS |
-| TC-114 | PP=2 env vars correct | vllm | any | ✅ PASS |
-| TC-115 | NCCL init container for distributed | vllm | any | ✅ PASS |
+Goal:
+- Prove the image, model files, and cluster can serve a real request in this environment.
 
-### 2.2 Real Deployment Tests (Cluster Required)
+Method:
+- Validate the already-running `llm-serving/qwen35-35b-predictor` deployment.
+- Run `/health`.
+- Run a real `/v1/chat/completions` request against the live pod.
 
-| TC | Description | Method | Status |
-|----|-------------|--------|--------|
-| TC-201 | vLLM single-GPU deploys (hami) | helm install + kubectl wait | ✅ PASS |
-| TC-202 | vLLM /health returns 200 | curl http://pod:8000/health | ✅ PASS |
-| TC-203 | vLLM chat completion works | POST /v1/chat/completions | ✅ PASS |
-| TC-204 | Hami pod scheduling | FilteringSucceed + BindingSucceed | ✅ PASS |
-| TC-205 | Volcano PodGroup + scheduling | kubectl apply + kubectl get pod | ❌ FAIL |
-| TC-206 | TP=2 vLLM deploy | helm install | ❌ OOM |
-| TC-207 | SGLang deployment | helm install | ⚠️ NOT TESTED |
-| TC-208 | llama.cpp CUDA deployment | helm install | ⚠️ NOT TESTED |
+Success criteria:
+- Existing service is healthy.
+- Existing service returns a non-empty completion payload.
 
-### 2.3 Hardware-Limited Tests (Documented, Not Executed)
+### SCN-02 HAMI scheduler single-GPU deployment
 
-| TC | Description | Reason |
-|----|-------------|--------|
-| TC-301 | Multi-node PP=2 | Requires 2+ GPU nodes |
-| TC-302 | TP=2 vLLM | OOM on RTX 2080 Ti (21.5GB) |
-| TC-303 | GPUDirect RDMA | Requires InfiniBand |
-| TC-304 | MIG multi-instance | RTX 2080 Ti has no MIG support |
+Goal:
+- Verify Helm can create a real HAMI-scheduled pod and bind it to an explicit GPU.
+- Attempt single-GPU inference with the only local model available.
 
----
+Method:
+- `helm upgrade --install` using:
+  - `scheduler.type=hami`
+  - `nvidia.com/use-gpuuuid=GPU-e099b988-e339-e561-2506-0bd2b99201b3`
+  - wrapper entrypoint `python3 /scripts/start_vllm.py`
+  - local PVC-mounted model `/mnt/models`
+- Observe pod scheduling, HAMI binding annotations, container logs, and load result.
 
-## 3. Volcano Scheduler Test Cases
+Success criteria:
+- Pod is scheduled by `hami-scheduler`.
+- HAMI binding annotation shows the requested GPU UUID.
+- If model fits, `/health` and `/v1/chat/completions` succeed.
 
-### TC-VOL-001: volcano scheduler sets schedulerName
-- **Input:** `scheduler.type=volcano`
-- **Expected:** deployment.spec.template.spec.schedulerName = "volcano"
-- **Method:** `helm template | grep schedulerName`
-- **Status:** ✅ PASS
+Known risk:
+- Available local model is `Qwen3.5-35B-A3B`, which is far too large for a plain 1x2080 Ti path unless wrapper patches and offload are enough.
 
-### TC-VOL-002: PodGroup created with createPodGroup=true
-- **Input:** `scheduler.type=volcano, scheduler.volcano.createPodGroup=true`
-- **Expected:** kind: PodGroup in rendered YAML
-- **Status:** ✅ PASS
+### SCN-03 HAMI scheduler TP=2 deployment
 
-### TC-VOL-003: PodGroup NOT created with createPodGroup=false
-- **Input:** `scheduler.type=volcano, scheduler.volcano.createPodGroup=false`
-- **Expected:** No PodGroup in rendered YAML
-- **Status:** ✅ PASS
+Goal:
+- Verify Helm can create a real HAMI-scheduled TP=2 deployment.
+- Prefer explicit use of the free GPUs if HAMI accounting allows it.
 
-### TC-VOL-004: Real Volcano pod scheduling
-- **Input:** volcano PodGroup + Pod with schedulerName=volcano
-- **Expected:** Pod phase = Running
-- **Status:** ❌ FAIL (UnexpectedAdmissionError)
-- **Root cause:** Hami + Volcano resource accounting incompatibility on this node
+Method:
+- `helm upgrade --install` using:
+  - `scheduler.type=hami`
+  - tensor parallel size `2`
+  - wrapper entrypoint `python3 /scripts/start_vllm.py`
+  - PVC-mounted local model
+  - explicit GPU UUID selection attempt for GPUs `6` and `7`
+- Observe HAMI scheduling events and allocation errors.
 
----
+Success criteria:
+- Pod is scheduled by `hami-scheduler`.
+- HAMI allocates two GPUs.
+- Pod becomes healthy and serves a real completion.
 
-## 4. Hami GPU Scheduler Test Cases
+Blocking condition to record:
+- If a second full GPU is not actually free in HAMI accounting, document that instead of pretending TP=2 succeeded.
 
-### TC-HAM-001: hami scheduler sets schedulerName
-- **Input:** `scheduler.type=hami`
-- **Expected:** deployment.spec.template.spec.schedulerName = "hami-scheduler"
-- **Status:** ✅ PASS
+### SCN-04 Volcano PodGroup creation
 
-### TC-HAM-002: Real Hami pod scheduling
-- **Input:** Pod with schedulerName=hami-scheduler
-- **Expected:** FilteringSucceed + BindingSucceed events
-- **Status:** ✅ PASS
+Goal:
+- Verify the chart creates a real `PodGroup` and that Volcano sees it.
 
-### TC-HAM-003: gpuMemoryFraction values
-- **Input:** `scheduler.hami.gpuMemoryFraction=0.2/0.5/0.9/1.0`
-- **Method:** helm template renders without error
-- **Status:** ⚠️ NOT TESTED
+Method:
+- `helm upgrade --install` using:
+  - `scheduler.type=volcano`
+  - `scheduler.volcano.createPodGroup=true`
+  - `scheduler.volcano.groupMinMember=1`
+  - `scheduler.volcano.queueName=default`
+- Inspect `PodGroup` YAML and status.
 
-### TC-HAM-004: nodeSchedulerPolicy
-- **Input:** `scheduler.hami.nodeSchedulerPolicy=binpack/spread/bind`
-- **Status:** ⚠️ NOT TESTED
+Success criteria:
+- `PodGroup` exists in `llm-serving`.
+- `PodGroup` status changes are observable from Volcano.
 
-### TC-HAM-005: gpuSchedulerPolicy
-- **Input:** `scheduler.hami.gpuSchedulerPolicy=binds/full/shared`
-- **Status:** ⚠️ NOT TESTED
+### SCN-05 Volcano real pod scheduling behavior
 
-### TC-HAM-006: migStrategy
-- **Input:** `scheduler.hami.migStrategy=none/single/mixed`
-- **Note:** RTX 2080 Ti does not support MIG
+Goal:
+- Validate what really happens when the same chart is scheduled by Volcano on this cluster.
 
----
+Method:
+- Run two Volcano variants:
+  - Volcano + HAMI-style UUID/full-memory constraints
+  - Volcano + plain `nvidia.com/gpu: 1`
+- Inspect pod events, `UnexpectedAdmissionError`, and `PodGroup` status.
 
-## 5. vLLM Engine Test Cases
+Success criteria:
+- Either the pod schedules and runs, or the exact failure mode is captured with real cluster events.
 
-### TC-VLLM-001: Basic engine args
-- **Input:** `model.name=Qwen/Qwen2.5-0.5B-Instruct`, all defaults
-- **Expected:** `--model Qwen/Qwen2.5-0.5B-Instruct --trust-remote-code --gpu-memory-utilization=0.90 --max-model-len=8192 --port=8000`
-- **Status:** ✅ PASS
+Expected observation from task background:
+- Non-HAMI scheduling paths can hit `UnexpectedAdmissionError` on this node.
 
-### TC-VLLM-002: TP=2 adds --tensor-parallel-size=2
-- **Input:** `engine.tensorParallelSize=2`
-- **Expected:** `--tensor-parallel-size 2`
-- **Status:** ✅ PASS
+### SCN-06 llama.cpp HAMI single-GPU deployment
 
-### TC-VLLM-003: PP=2 adds VLLM_PIPELINE_PARALLEL_SIZE env
-- **Input:** `engine.pipelineParallelSize=2`
-- **Expected:** `VLLM_PIPELINE_PARALLEL_SIZE=2` env var
-- **Status:** ⚠️ NOT TESTED
+Goal:
+- Verify `charts/llamacpp-inference` can perform real single-GPU inference on the free RTX 2080 Ti.
 
-### TC-VLLM-004: Real inference test
-- **Input:** Qwen/Qwen2.5-0.5B-Instruct
-- **Method:** POST /v1/chat/completions with "What is Python?"
-- **Expected:** Valid JSON response with model output
-- **Result:** ✅ PASS - "Python is an interpreted high-level programming language..."
+Method:
+- Use HAMI scheduler with explicit GPU UUID pin to GPU `7`.
+- Use image `ghcr.io/ggerganov/llama.cpp:server-cuda-b4719`.
+- Use model `Qwen/Qwen2.5-0.5B-Instruct-GGUF`.
+- Use GGUF quant `qwen2.5-0.5b-instruct-q4_k_m.gguf`.
+- Inject proxy env vars for Hugging Face download.
+- Validate `/health` and send a real `/v1/chat/completions` request.
 
----
+Success criteria:
+- Pod binds to the requested GPU.
+- Model downloads and loads.
+- `/health` is healthy.
+- Completion request returns a non-empty response.
 
-## 6. NVLink Test Cases (RTX 2080 Ti)
+### SCN-07 sglang HAMI single-GPU deployment
 
-### TC-NVL-001: TP=2 on NVLink-connected GPUs
-- **Input:** `engine.tensorParallelSize=2, resources.limits.nvidia.com/gpu=2`
-- **Method:** nvidia-smi topo -m shows NV1 for connected GPU pairs
-- **RTX 2080 Ti NVLink pairs:** (0,3), (1,2), (4,7), (5,6)
-- **Status:** ❌ OOM (RTX 2080 Ti 22GB insufficient for TP=2 even with 0.5B model)
+Goal:
+- Verify `charts/sglang-inference` can create a real HAMI-bound pod on the same free GPU path.
 
-### TC-NVL-002: NVLink topology verification
-- **Method:** `nvidia-smi topo -m` in pod
-- **Status:** ⚠️ NOT TESTED (TP=2 OOM)
+Method:
+- Use HAMI scheduler with explicit GPU UUID pin to GPU `7`.
+- Use image `lmsysorg/sglang:latest`.
+- Use model `Qwen/Qwen2.5-0.5B-Instruct`.
+- Inject proxy env vars.
+- Observe image pull, scheduler events, and runtime logs.
 
----
+Success criteria:
+- Pod binds to the requested GPU.
+- Image pulls successfully.
+- Container starts and reaches health endpoint.
 
-## 7. Multi-Node Test (Hardware Limited)
+Blocking condition to record:
+- If the node's registry mirror path fails before container start, record the exact pull error instead of pretending the chart itself is broken.
 
-> ⚠️ **NOTE:** Multi-node tests require at least 2 GPU nodes.
-> Current environment has only 1 node (axe-master).
-> For multi-node testing:
-> ```bash
-> helm install test charts/vllm-inference \
->   --set distributed.enabled=true \
->   --set distributed.nodeList=node2,node3 \
->   --set distributed.masterAddr=node2 \
->   --set engine.tensorParallelSize=2 \
->   --set engine.pipelineParallelSize=2
-> ```
+## Reference Links
 
----
-
-## 8. How to Run Tests
-
-### Prerequisites
-- Kubernetes cluster with GPU nodes
-- kubectl and helm installed
-- NVIDIA device plugin installed
-- Volcano and/or Hami schedulers installed
-- Clash proxy for HuggingFace access
-
-### Template Tests (no cluster required)
-```bash
-git clone https://github.com/axeprpr/helm-llm-repo
-cd helm-llm-repo
-REPO_ROOT=$PWD pytest tests/ -v --tb=short
-```
-
-### Real Deployment Tests (Working Configuration)
-
-```bash
-# Working values.yaml for RTX 2080 Ti
-cat > /tmp/vllm-rtx2080ti.yaml << 'EOF'
-image:
-  repository: docker.io/vllm/vllm-openai
-  tag: v0.8.5.post1
-model:
-  name: Qwen/Qwen2.5-0.5B-Instruct
-scheduler:
-  type: hami
-engine:
-  maxModelLen: 1024
-  gpuMemoryUtilization: 0.3
-livenessProbe:
-  httpGet:
-    path: /health
-    port: 8000
-  initialDelaySeconds: 120
-  periodSeconds: 10
-  failureThreshold: 10
-readinessProbe:
-  httpGet:
-    path: /health
-    port: 8000
-  initialDelaySeconds: 60
-  periodSeconds: 10
-  failureThreshold: 10
-extraEnv:
-  - name: http_proxy
-    value: "http://192.168.3.42:7890"
-  - name: https_proxy
-    value: "http://192.168.3.42:7890"
-  - name: no_proxy
-    value: "localhost,127.0.0.1,10.0.0.0/8,192.168.0.0/16"
-EOF
-
-# Deploy
-helm install test-vllm charts/vllm-inference \
-  -f /tmp/vllm-rtx2080ti.yaml \
-  --timeout 600s
-
-# Wait for ready
-kubectl wait --for=condition=ready pod -l app.kubernetes.io/instance=test-vllm -n default --timeout=600s
-
-# Test inference
-kubectl exec -it test-vllm-xxx -n default -- \
-  python3 -c "
-import urllib.request, json
-data = json.dumps({'model':'Qwen/Qwen2.5-0.5B-Instruct','messages':[{'role':'user','content':'What is 2+2?'}],'max_tokens':20}).encode()
-req = urllib.request.Request('http://localhost:8000/v1/chat/completions', data=data, headers={'Content-Type':'application/json'})
-r = urllib.request.urlopen(req, timeout=60)
-print(json.loads(r.read()))
-"
-```
-
----
-
-## 9. Chart Modifications Required
-
-The chart requires two modifications for v0.8.5 compatibility:
-
-**File:** `charts/vllm-inference/templates/deployment.yaml`
-
-Change the vllm serve command from:
-```bash
-vllm serve {{ include "vllm-inference.engineArgs" . | indent 12 }}
-```
-
-To:
-```bash
-vllm serve --dtype float16 --enforce-eager {{ .Values.model.name }} {{ include "vllm-inference.engineArgs" . | indent 12 }}
-```
-
-These flags are required for RTX 2080 Ti (sm_75) compatibility:
-- `--dtype float16`: bfloat16 not supported on sm_75
-- `--enforce-eager`: Disable CUDA graph (causes OOM on 22GB GPU)
-- Model as positional arg: v0.11.0+ requires model as positional argument
-
----
-
-_Generated by 35号技师 (Codex Agent) on 2026-04-03_
+- vLLM serve CLI: <https://docs.vllm.ai/en/latest/cli/serve.html>
+- HAMi scheduler docs: <https://project-hami.io/docs/userguide/scheduler/scheduler/>
+- HAMi specific GPU selection: <https://project-hami.io/docs/userguide/nvidia-device/examples/specify-certain-card/>
+- Volcano PodGroup docs: <https://volcano.sh/en/docs/podgroup/>

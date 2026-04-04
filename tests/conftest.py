@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Pytest fixtures for helm-llm-repo scheduler tests."""
-import subprocess
-import yaml
-import pytest
 from pathlib import Path
 import os
+import subprocess
 
-REPO_ROOT = Path(os.environ.get("REPO_ROOT", "/root/helm-llm-repo"))
+import pytest
+import yaml
+
+REPO_ROOT = Path(os.environ.get("REPO_ROOT", Path(__file__).resolve().parents[1]))
 CHARTS = ["vllm-inference", "sglang-inference", "llamacpp-inference"]
 
 def helm_template(chart, extra_sets=None, failure_allowed=False):
@@ -26,7 +27,7 @@ def find_doc(docs, kind):
     return next((d for d in docs if d and d.get("kind") == kind), None)
 
 def find_containers(pod_spec):
-    return pod_spec.get("spec", {}).get("containers", [])
+    return pod_spec.get("containers", [])
 
 @pytest.fixture(params=CHARTS)
 def chart(request):

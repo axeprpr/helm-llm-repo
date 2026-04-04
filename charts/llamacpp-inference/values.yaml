@@ -22,7 +22,7 @@ image:
   autoBackend: true
   repository: ghcr.io/ggerganov/llama.cpp
   pullPolicy: IfNotPresent
-  tag: "server-cuda"  # autoBackend=true overrides this
+  tag: ""
 
 # GPU hardware type - determines which backend image is used
 # nvidia  → CUDA build (NVIDIA GPU)
@@ -178,6 +178,7 @@ readinessProbe:
     port: 8000
   initialDelaySeconds: 5
   periodSeconds: 5
+startupProbe: {}
 
 # Autoscaling
 autoscaling:
@@ -208,6 +209,7 @@ podDisruptionBudget:
 # Pod annotations
 podAnnotations: {}
 podLabels: {}
+extraEnv: []
 
 # Runtime / priority
 runtimeClassName: ""
