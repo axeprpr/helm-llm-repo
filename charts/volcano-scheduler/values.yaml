@@ -1,0 +1,14 @@
+# Placeholder values for a future Volcano scheduler chart.
+
+enabled: false
+
+image:
+  repository: volcano-sh/volcano-scheduler
+  tag: "1.10.0"
+  pullPolicy: IfNotPresent
+
+namespace: volcano-system
+
+upstream:
+  installMode: manifest
+  manifestPath: installer/volcano-development.yaml

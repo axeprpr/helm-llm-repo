@@ -5,6 +5,76 @@
 
 ---
 
+## 零、本次 Codex 会话实际执行情况（2026-04-05 UTC）
+
+本次会话的目标是补跑 `192.168.23.27` 上的 Volcano gang scheduling 与 HAMi vGPU 共享真实测试，并把命令输出补充进本文档。
+
+### 0.1 实际执行的连通性检查
+
+```bash
+$ sshpass -p 'CloudP@55!' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@192.168.23.27 'hostname && whoami && date -u'
+socket: Operation not permitted
+ssh: connect to host 192.168.23.27 port 22: failure
+
+$ sshpass -p 'CloudP@55!' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ubuntu@192.168.23.27 'hostname && whoami && date -u'
+socket: Operation not permitted
+ssh: connect to host 192.168.23.27 port 22: failure
+```
+
+结论：
+
+- 当前 Codex 沙箱禁止向 `192.168.23.27:22` 发起出站 socket，SSH 在认证前即被阻断
+- 因此本次会话**未能从当前环境实际登陆 ENV-27**
+
+### 0.2 本地 Kubernetes / Helm 工具检查
+
+```bash
+$ which kubectl || true
+
+$ which helm || true
+```
+
+结论：
+
+- 当前工作区镜像中没有可直接使用的 `kubectl`
+- 当前工作区镜像中没有可直接使用的 `helm`
+- 因此即使不走 SSH，也无法从本地直接对目标集群补跑 Kubernetes 工作负载
+
+### 0.3 本次仓库审计结果
+
+```bash
+$ git status --short --branch
+## main...origin/main
+
+$ git branch -a --verbose --no-abbrev
+  backup-runtime-validation 7603cc719ac614e39c319a2df9fc527155195039 fix: validate sglang and llamacpp runtime paths
+* main                      f41ecacd1ce2aab2c1e2a0eea819f39136c21804 docs: add detailed ENV-27 test process (Chinese), fix RBAC for HAMi scheduler
+  remotes/origin/HEAD       -> origin/main
+  remotes/origin/gh-pages   2b94a567fdba83bf6c869d020ba872b299cbc44d Release charts from bbf37af707634045b0584bf1cca47fa87a44ab66
+  remotes/origin/main       f41ecacd1ce2aab2c1e2a0eea819f39136c21804 docs: add detailed ENV-27 test process (Chinese), fix RBAC for HAMi scheduler
+
+$ rg -n "TODO|FIXME|WIP|XXX|TBD|incomplete|pending" .
+./TEST_SCENARIOS.md:533:- `PodGroup` remains queued or pending until the full gang is feasible
+```
+
+审计发现：
+
+- `main` 工作树干净，没有未提交修改
+- 存在一个本地分支 `backup-runtime-validation`，但没有新的 WIP 分支或未合并实验分支
+- 显式 TODO/FIXME 很少，当前更大的未完成项不是代码注释，而是 **ENV-27 真实测试证据缺失/相互矛盾**
+- `VOLCANO_HAMI_GUIDE.md` 中仍保留了两套互相冲突的 ENV-27 描述：
+  - 一处写 `8× NVIDIA H100` 且尚未安装 driver
+  - 另一处写 `8× RTX 4090` 且真实 GPU 测试已成功
+- 因为本次会话无法连上 ENV-27，上述冲突**无法在当前环境下重新核实**
+
+### 0.4 本次会话对优先任务 2/3/4 的实际状态
+
+- 优先任务 2（Volcano 真实 gang scheduling 测试）：**本次会话未执行**，原因是 SSH/网络受沙箱限制
+- 优先任务 3（HAMi 2+ Pod 共享 1 张 RTX 4090）：**本次会话未执行**，原因是 SSH/网络受沙箱限制
+- 优先任务 4（补充“实际命令输出”）：已补充本次会话真实执行到的命令与输出，但它们是**连通性/工具检查证据**，不是目标集群工作负载结果
+
+---
+
 ## 一、机器环境信息
 
 | 项目 | 值 |

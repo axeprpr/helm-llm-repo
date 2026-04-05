@@ -4,6 +4,36 @@
 
 **Helm 仓库：** https://axeprpr.github.io/helm-llm-repo
 
+## 当前状态（2026-04-05）
+
+当前仓库已经包含 3 个可用推理 Chart：
+
+- `charts/vllm-inference`
+- `charts/sglang-inference`
+- `charts/llamacpp-inference`
+
+另外新增了 2 个调度器 Chart 骨架，当前仅用于占位和文档归档：
+
+- `charts/volcano-scheduler`
+- `charts/hami-scheduler`
+
+调度器支持现状：
+
+| 能力 | 当前状态 | 说明 |
+|------|----------|------|
+| Volcano 模板支持 | 已支持 | 三个推理 Chart 都支持 `scheduler.type=volcano`，并可渲染 `PodGroup` |
+| Volcano 真实运行证据 | 部分完成 | `ENV-42` 已验证 `PodGroup` 创建与排队；单 Pod 走到 Volcano 绑定后在 kubelet 侧复现 `UnexpectedAdmissionError`；真正的 2 副本 gang 成功证据仍缺失 |
+| HAMi 模板支持 | 已支持 | 三个推理 Chart 都支持 `scheduler.type=hami` |
+| HAMi 高级策略渲染 | 部分支持 | `vllm-inference` 已显式渲染 `hami.io/node-scheduler-policy`、`hami.io/gpu-scheduler-policy` 和 `nvidia.com/gpumem-percentage`；其他两个 Chart 仍主要依赖通用 `scheduler.annotations.*` |
+| HAMi 真实运行证据 | 部分完成 | `ENV-42` 已验证单 Pod HAMi 调度与 GPU UUID 分配；多 Pod 同卡 vGPU 共享证据仍缺失 |
+| `ENV-27` 补测 | 未完成 | 2026-04-05 当前工作区因沙箱禁止 SSH，未能新增真实集群结果 |
+
+相关文档：
+
+- `TEST_SCENARIOS.md`：调度器测试场景与证据标准
+- `TEST_REPORT.md`：当前已采集的真实运行结果
+- `TEST_PROCESS.md`：`ENV-27` 补测过程与本次沙箱阻断记录
+
 ---
 
 ## 环境准备

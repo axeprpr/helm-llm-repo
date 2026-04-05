@@ -1,0 +1,17 @@
+apiVersion: v2
+name: volcano-scheduler
+description: Skeleton chart placeholder for Volcano scheduler installation docs
+type: application
+version: 0.1.0
+appVersion: "1.10.0"
+keywords:
+  - volcano
+  - scheduler
+  - batch
+  - gpu
+home: https://github.com/axeprpr/helm-llm-repo
+sources:
+  - https://github.com/axeprpr/helm-llm-repo
+maintainers:
+  - name: axeprpr
+    email: axe3@qq.com

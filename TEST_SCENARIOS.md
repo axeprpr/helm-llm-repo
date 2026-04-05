@@ -1,6 +1,6 @@
 # Helm LLM Scheduler Test Scenarios
 
-Date: 2026-04-04
+Date: 2026-04-05
 
 This document is the scheduler-focused test plan for `helm-llm-repo`. It covers:
 
@@ -17,6 +17,8 @@ Charts currently in this repo:
 - `charts/vllm-inference`
 - `charts/sglang-inference`
 - `charts/llamacpp-inference`
+- `charts/volcano-scheduler` (skeleton only)
+- `charts/hami-scheduler` (skeleton only)
 
 Current scheduler-oriented tests:
 
@@ -41,6 +43,23 @@ What the automated tests do not prove:
 - actual HAMi vGPU sharing on GPU nodes
 - actual device isolation and GPU UUID binding
 - `volcano-vgpu-device-plugin` runtime integration
+
+## Current Real-World Evidence In This Repo
+
+The repo already contains runtime evidence from `ENV-42` in `TEST_REPORT.md`.
+That evidence should be treated as authoritative for what is already observed,
+and separate from scenarios that are still planned.
+
+| ID | Scenario | Current status | Actual result already captured |
+|---|---|---|---|
+| `OBS-V-01` | Volcano manifest path | PASS | `schedulerName: volcano` and `PodGroup` creation are covered by automated tests across all inference charts |
+| `OBS-V-02` | Volcano runtime on `ENV-42` | PASS for failure reproduction | `PodGroup` entered `Inqueue`; with plain `nvidia.com/gpu: 1`, Volcano bound the pod and kubelet returned `UnexpectedAdmissionError` |
+| `OBS-V-03` | Volcano true multi-replica gang success | NOT YET CAPTURED | no local repo evidence yet for a successful `replicaCount>1` gang admission |
+| `OBS-H-01` | HAMi manifest path | PASS | all inference charts render `schedulerName: hami-scheduler`; vLLM also renders explicit HAMi policy annotations and GPU share limits |
+| `OBS-H-02` | HAMi single-GPU runtime on `ENV-42` | PASS | pod bound through HAMi and allocation annotation recorded a concrete GPU UUID |
+| `OBS-H-03` | HAMi multi-pod vGPU sharing | NOT YET CAPTURED | no local repo evidence yet for two pods sharing one physical GPU at the same time |
+| `OBS-H-04` | HAMi UUID isolation | PARTIAL | one real UUID-bound allocation exists; a competing second UUID-pinned pod result is not yet recorded |
+| `OBS-E-27` | `ENV-27` rerun on 2026-04-05 | BLOCKED | sandbox cannot SSH to `192.168.23.27`, so no new live cluster evidence was collected in this workspace |
 
 ## Actual GPU Nodes Referenced by This Repo
 
@@ -151,6 +170,14 @@ Goal:
 
 - verify that replicas wait as a group instead of partially starting
 
+Current repo evidence:
+
+- `TEST_REPORT.md` already proves the Volcano path creates `PodGroup` objects and reaches scheduler/kubelet interaction on `ENV-42`
+- the strongest observed runtime result so far is:
+  - `PodGroup` created and `Inqueue` when constraints were not feasible
+  - single-pod Volcano binding followed by kubelet `UnexpectedAdmissionError` when the cluster did not have the expected post-bind device allocation
+- there is still no captured repo evidence for a successful `replicaCount=2` gang admission or a partial-admission prevention trace from a real two-replica Helm release
+
 Recommended target:
 
 - `ENV-27` first
@@ -181,6 +208,13 @@ Pass criteria:
 
 - `PodGroup.spec.minMember=2`
 - scheduler events mention group admission rather than per-pod native scheduling
+
+Observed result classification:
+
+- mark as `PASS` when both replicas transition together or stay queued together
+- mark as `PARTIAL` when only `PodGroup` creation and queueing are observed
+- mark as `PASS for failure reproduction` when Volcano binds but kubelet/device-plugin admission fails after scheduling, because that still proves the chart reached the Volcano path
+- keep `NOT YET EXECUTED` if the cluster run never happened
 
 Failure categories to record:
 
@@ -339,6 +373,12 @@ Goal:
 
 - verify multiple workloads can share one physical GPU through HAMi limits
 
+Current repo evidence:
+
+- `tests/hami_test.py` and `tests/vllm_chart_test.py` already prove the chart renders the HAMi scheduler path and maps `scheduler.hami.gpuSharePercent` to `nvidia.com/gpumem-percentage`
+- `TEST_REPORT.md` already proves one real HAMi-scheduled pod bound successfully on `ENV-42` and exposed allocation annotations with a concrete GPU UUID
+- there is still no local repo evidence for two concurrent pods sharing one physical GPU, and `TEST_PROCESS.md` records that the planned `ENV-27` rerun on `2026-04-05` was blocked by the sandbox before SSH could start
+
 Recommended target:
 
 - `ENV-42`
@@ -371,6 +411,13 @@ Pass criteria:
 
 - pod resources render `nvidia.com/gpumem-percentage`
 - HAMi annotations or events prove the shared-device allocation
+
+Detailed result cases to record:
+
+- `H-02A Render-only PASS`: manifests contain `schedulerName: hami-scheduler` and `nvidia.com/gpumem-percentage`
+- `H-02B Single-pod runtime PASS`: one pod binds through HAMi and exposes `hami.io/vgpu-devices-allocated`
+- `H-02C Shared-GPU runtime PASS`: two pods are Running and their annotations prove a shared physical device or compatible HAMi fractional allocation
+- `H-02D BLOCKED`: one pod binds but the second stays Pending because the node does not expose enough shareable device capacity
 
 ### HAMi Scenario H-03: Device Isolation With GPU UUID Pinning
 
@@ -550,6 +597,7 @@ Expected outcomes on `ENV-42`:
 
 - strongest value for scheduler correctness and reproducibility
 - weaker value for large TP and high-memory model success due to `8 x RTX 2080 Ti`
+- current repo evidence already covers items `1`, part of `3`, and part of `4`
 
 ### Phase 2: `ENV-27` Scale Validation
 
@@ -564,6 +612,7 @@ Expected outcomes on `ENV-27`:
 
 - better chance of completing real TP and large-model scenarios
 - better target for queue/binpack tests that need more free GPU headroom
+- as of `2026-04-05`, no new `ENV-27` evidence was added from this workspace because outbound SSH is blocked by the sandbox
 
 ## Pass/Fail Rules
 

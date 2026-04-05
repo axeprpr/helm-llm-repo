@@ -1,0 +1,16 @@
+# Placeholder values for a future HAMi scheduler chart.
+
+enabled: false
+
+image:
+  repository: projecthami/hami
+  tag: "2.7.1"
+  pullPolicy: IfNotPresent
+
+namespace: kube-system
+
+scheduler:
+  name: hami-scheduler
+
+devicePlugin:
+  enabled: true
