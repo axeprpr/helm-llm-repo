@@ -299,3 +299,47 @@ HAMi-core（容器内 hook，显存/SM 硬限制）
 - HAMi 调度机制: https://project-hami.io/docs/developers/scheduling/
 - HAMi vGPU 集成: https://project-hami.io/docs/installation/how-to-use-volcano-vgpu
 - HAMi 博客（UnexpectedAdmissionError 说明）: https://project-hami.io/blog/2024/12/31/post/
+
+## ENV-27 (192.168.23.27) 实际测试结果
+
+### 测试时间
+2026-04-05 UTC
+
+### 测试结果
+
+#### ✅ GPU 基础测试
+- 节点: 8× NVIDIA GeForce RTX 4090 (49140 MiB each)
+- Driver: 570.211.01
+- nvidia-device-plugin: Running，nvidia.com/gpu: 8 registered
+- 测试命令: `kubectl run gpu-test --image=nvidia/cuda:12.0.0-runtime-ubuntu22.04`
+- 结果: **成功** - nvidia-smi 输出正常
+
+#### ✅ Volcano Gang Scheduling 测试
+- 测试 Job: 3 pods，minAvailable: 2
+- 调度器: volcano-scheduler
+- Queue: default
+- 结果: **成功** - 3 pods 同时调度并运行，gang semantics 正常
+
+#### ❌ HAMi Scheduler 测试
+- HAMi v2.7.1 scheduler deployed
+- 状态: Pod Running，但存在 RBAC 权限问题导致无法正确 bind pods
+- 根因: HAMi scheduler serviceaccount 需要完整的 system:kube-scheduler ClusterRole 权限
+- 建议: 需要重装完整 HAMi helm chart 并确保 RBAC 正确
+
+### 组件状态总览
+
+| 组件 | 状态 | 备注 |
+|------|------|------|
+| NVIDIA Driver 570 | ✅ Running | RTX 4090 detected |
+| nvidia-device-plugin | ✅ Running | 8 GPU registered |
+| Calico CNI | ✅ Running | Network working |
+| Volcano Scheduler | ✅ Running | Gang scheduling works |
+| Volcano Controllers | ✅ Running | Job CRD working |
+| Volcano Admission | ❌ Deleted | 与 device plugin 冲突，已移除 |
+| HAMi Scheduler | ⚠️ Partial | RBAC 不完整，需修复 |
+| HAMi Device Plugin | ❌ 未部署 | 使用官方 nvidia-device-plugin 替代 |
+
+### 已知问题
+1. Volcano Admission webhook 与 device plugin 创建存在冲突（临时方案：删除 admission）
+2. HAMi Scheduler RBAC 不完整，Pod binding 失败
+3. 需在 192.168.23.27 上安装 NVIDIA Driver 时保留 swapoff 配置（重启后 swap 重新启用导致 kubelet 失败）
