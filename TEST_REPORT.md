@@ -212,6 +212,117 @@ Operational conclusion:
 
 ---
 
+## 2026-04-12 ENV-27 / VM104 Volcano VCJob quickstart
+
+What was verified:
+
+- Volcano native `batch.volcano.sh/v1alpha1 Job` works on `VM104`
+- the job progressed through `Pending -> Running -> Completed`
+- the job log was collected successfully
+
+Real evidence collected:
+
+- `vcjob-sleep` reached `Completed`
+- `kubectl logs` returned `vcjob-ok`
+
+Working file:
+
+- `examples/volcano-vcjob-sleep.yaml`
+
+Operational notes:
+
+- the first image choice `busybox:1.36` was blocked by Docker Hub `EOF`
+- the validated path on this node uses the already-present `docker.io/calico/node:v3.25.0`
+
+---
+
+## 2026-04-12 ENV-27 / VM104 Volcano capability queue
+
+What was verified:
+
+- `Queue.spec.capability` works on `VM104`
+- `cap-small` with `cpu=8` limits a `4 x 4CPU` deployment to two running pods
+
+Real evidence collected:
+
+- `cap-small.spec.capability.cpu` was `8`
+- `capability-demo` produced `2 Running + 2 Pending`
+
+Working files:
+
+- `examples/volcano-capability-queue.yaml`
+- `examples/volcano-capability-demo.yaml`
+
+---
+
+## 2026-04-12 ENV-27 / VM104 Volcano reclaim exploration
+
+What was attempted:
+
+- scheduler test config was switched to `allocate, backfill, reclaim, preempt`
+- two reclaimable queues were created:
+  - `queue-a.deserved.cpu=8`
+  - `queue-b.deserved.cpu=24`
+- `capacity-demo-a` first occupied CPU
+- `capacity-demo-b` was then submitted to trigger reclaim from `queue-a`
+
+Observed result:
+
+- scheduler logs confirmed the reclaim path was entered
+- queue state and pod state remained:
+  - `queue-a allocated cpu=32`
+  - `queue-b allocated cpu=4`
+  - `capacity-demo-a = 8 Running`
+  - `capacity-demo-b = 1 Running + 7 Pending`
+- key scheduler evidence:
+  - `Queue <queue-b> can not reclaim`
+
+Conclusion:
+
+- this is not yet a passing reclaim smoke
+- it is a reproducible single-node reclaim experiment with captured scheduler evidence
+
+Files prepared for continued work:
+
+- `examples/volcano-capacity-queue-a.yaml`
+- `examples/volcano-capacity-queue-b.yaml`
+- `examples/volcano-capacity-demo-a.yaml`
+- `examples/volcano-capacity-demo-b.yaml`
+
+---
+
+## 2026-04-12 ENV-27 / VM104 Volcano preempt exploration
+
+What was attempted:
+
+- scheduler test config was switched to `allocate, backfill, reclaim, preempt`
+- both native `Deployment` and native `VCJob` paths were tested
+- low-priority and high-priority workloads were created with separate `PriorityClass`
+
+Observed result:
+
+- native `Deployment` path produced scheduler evidence that is not suitable as the main verification path:
+  - `task ... has null jobID`
+- switching to `VCJob` improved behavior:
+  - high-priority `VCJob` entered scheduling normally
+- however, no stable positive proof of victim eviction was collected in this session
+- key scheduler evidence:
+  - `Queue <default> can not reclaim by preempt others`
+
+Conclusion:
+
+- this is not yet a passing preempt smoke
+- continued work should stay on the `VCJob` path instead of using `Deployment` as the primary preempt verification object
+
+Files prepared for continued work:
+
+- `examples/volcano-priorityclass-low.yaml`
+- `examples/volcano-priorityclass-high.yaml`
+- `examples/volcano-preempt-low.yaml`
+- `examples/volcano-preempt-high.yaml`
+
+---
+
 ## 2026-04-04 Current Session Status
 
 This session was intended to re-run a real deployment validation for

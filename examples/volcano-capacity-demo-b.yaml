@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: capacity-demo-b
+  namespace: volcano-single
+spec:
+  replicas: 8
+  selector:
+    matchLabels:
+      app: capacity-demo-b
+  template:
+    metadata:
+      labels:
+        app: capacity-demo-b
+      annotations:
+        scheduling.volcano.sh/queue-name: queue-b
+    spec:
+      schedulerName: volcano
+      containers:
+        - name: pause
+          image: registry.k8s.io/pause:3.8
+          resources:
+            requests:
+              cpu: "4"
+              memory: "64Mi"
+            limits:
+              cpu: "4"
+              memory: "64Mi"

@@ -359,7 +359,177 @@ kubectl -n llm-test describe podgroup vllm-volcano-closed-vllm-inference
 
 这条用例是当前版本行为记录，不是 “Closed 队列会硬阻塞所有新 workload” 的证明。
 
-### 用例 8：SGLang 单卡基础 Smoke
+### 用例 8：Volcano VCJob Quickstart
+
+测试内容：
+
+- 部署 `batch.volcano.sh/v1alpha1` 的 `VCJob`
+- 验证 `Pending -> Running -> Completed`
+- 验证作业日志输出
+
+测试场景：
+
+- 单节点 `VM104`
+- 使用节点本地已有的 `docker.io/calico/node:v3.25.0`
+- 用于验证 Volcano 原生作业对象和基础生命周期
+
+执行命令：
+
+```bash
+kubectl create ns volcano-single --dry-run=client -o yaml | kubectl apply -f -
+kubectl apply -f ./examples/volcano-vcjob-sleep.yaml
+kubectl -n volcano-single wait --for=jsonpath='{.status.state.phase}'=Completed \
+  job.batch.volcano.sh/vcjob-sleep --timeout=180s
+```
+
+检查项：
+
+```bash
+kubectl -n volcano-single get job.batch.volcano.sh vcjob-sleep -o wide
+kubectl -n volcano-single logs -l volcano.sh/job-name=vcjob-sleep --tail=20
+```
+
+通过标准：
+
+- `VCJob` 状态最终为 `Completed`
+- 日志包含 `vcjob-ok`
+
+场景说明：
+
+- 这条用例已经在 `VM104` 上通过
+- 通过这条用例可以证明 Volcano 原生 `VCJob` 基础链路正常
+
+### 用例 9：Volcano capability 队列上限
+
+测试内容：
+
+- 创建带 `capability.cpu=8` 的 queue
+- 部署 4 个副本、每个副本申请 `4 CPU`
+- 验证 queue capability 把总运行副本数压到 2
+
+测试场景：
+
+- 单节点 `VM104`
+- `schedulerName=volcano`
+- 自动 `PodGroup`
+- 用于验证 queue capability 的资源上限生效
+
+执行命令：
+
+```bash
+kubectl apply -f ./examples/volcano-capability-queue.yaml
+kubectl -n volcano-single apply -f ./examples/volcano-capability-demo.yaml
+```
+
+检查项：
+
+```bash
+kubectl get queue cap-small -o yaml
+kubectl -n volcano-single get pods -l app=capability-demo -o wide
+```
+
+通过标准：
+
+- `cap-small.spec.capability.cpu=8`
+- 4 个副本里只有 2 个 `Running`
+- 另外 2 个保持 `Pending`
+
+场景说明：
+
+- 这条用例已经在 `VM104` 上通过
+- 当前证据是 `2 Running + 2 Pending`
+
+### 用例 10：Volcano reclaim 单节点试验
+
+测试内容：
+
+- 创建两个带 `deserved.cpu` 的 queue
+- 先让 `queue-a` 占用 CPU
+- 再向 `queue-b` 提交新 workload
+- 观察 `reclaim` 是否会从 `queue-a` 回收资源给 `queue-b`
+
+测试场景：
+
+- 单节点 `VM104`
+- scheduler 测试配置切到 `allocate, backfill, reclaim, preempt`
+- `queue-a.deserved.cpu=8`
+- `queue-b.deserved.cpu=24`
+
+执行命令：
+
+```bash
+kubectl apply -f ./examples/volcano-capacity-queue-a.yaml
+kubectl apply -f ./examples/volcano-capacity-queue-b.yaml
+kubectl -n volcano-single apply -f ./examples/volcano-capacity-demo-a.yaml
+kubectl -n volcano-single apply -f ./examples/volcano-capacity-demo-b.yaml
+```
+
+检查项：
+
+```bash
+kubectl get queue queue-a queue-b -o yaml
+kubectl -n volcano-single get pods -l app=capacity-demo-a -o wide
+kubectl -n volcano-single get pods -l app=capacity-demo-b -o wide
+kubectl -n volcano-system logs deploy/volcano-scheduler --since=5m | grep -Ei 'reclaim|queue-a|queue-b'
+```
+
+当前结果：
+
+- 调度器已经进入 `reclaim` 代码路径
+- 但在当前环境和参数组合下，还没有得到正向的资源回收结果
+- 当前日志关键证据是：
+  - `Queue <queue-b> can not reclaim`
+
+场景说明：
+
+- 这条目前还是试验项，不算通过
+- 后续需要继续收参数和 queue 配置
+
+### 用例 11：Volcano preempt 单节点试验
+
+测试内容：
+
+- 创建高低优先级 `PriorityClass`
+- 先提交低优先级 workload
+- 再提交高优先级 workload
+- 观察是否产生稳定的抢占行为
+
+测试场景：
+
+- 单节点 `VM104`
+- 先试原生 `Deployment` 路径，后试 `VCJob` 路径
+- scheduler 测试配置切到 `allocate, backfill, reclaim, preempt`
+
+执行命令：
+
+```bash
+kubectl apply -f ./examples/volcano-priorityclass-low.yaml
+kubectl apply -f ./examples/volcano-priorityclass-high.yaml
+kubectl -n volcano-single apply -f ./examples/volcano-preempt-low.yaml
+kubectl -n volcano-single apply -f ./examples/volcano-preempt-high.yaml
+```
+
+检查项：
+
+```bash
+kubectl -n volcano-single get pods -l app=preempt-low -o wide
+kubectl -n volcano-single get pods -l app=preempt-high -o wide
+kubectl -n volcano-system logs deploy/volcano-scheduler --since=5m | grep -Ei 'preempt|victim|priority'
+```
+
+当前结果：
+
+- 原生 `Deployment` 路径下，scheduler 日志出现了：
+  - `task ... has null jobID`
+- 改成 `VCJob` 路径后，高优先级作业可以正常进入调度
+- 但还没有得到稳定、可重复的“低优先级任务被驱逐”的正向证据
+
+场景说明：
+
+- 这条目前也是试验项，不算通过
+- 下一步应继续按 Volcano 原生作业模型收敛
+
+### 用例 12：SGLang 单卡基础 Smoke
 
 测试内容：
 
@@ -415,7 +585,7 @@ curl -fsS http://<service-or-clusterip>:8000/v1/chat/completions \
 - This image is large. If containerd cannot pull from Docker Hub directly, pre-pull it through the configured proxy before rollout.
 - On this tested build, `/health` returns `503` even when the service is usable; use `/model_info` for probes.
 
-### 用例 9：llama.cpp 单卡基础 Smoke
+### 用例 13：llama.cpp 单卡基础 Smoke
 
 测试内容：
 

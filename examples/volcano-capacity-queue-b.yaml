@@ -1,0 +1,9 @@
+apiVersion: scheduling.volcano.sh/v1beta1
+kind: Queue
+metadata:
+  name: queue-b
+spec:
+  weight: 1
+  reclaimable: true
+  deserved:
+    cpu: "24"

@@ -31,6 +31,9 @@
 | `ENV-27` Volcano custom queue | 已完成 | `smoke-queue` 上已完成真实 completion 验证，`PodGroup.spec.queue` 与 `Scheduled from volcano` 证据已采集 |
 | `ENV-27` Volcano auto PodGroup | 已完成 | `createPodGroup=false` 路径已验证，Volcano 会创建匿名 `podgroup-<uid>` 并完成真实 completion |
 | `ENV-27` Volcano gang smoke | 已完成 | `replicas=2 + groupMinMember=2` 已在 `VM104` 上完成 `2/2 Available` 与真实 completion 验证 |
+| `ENV-27` Volcano VCJob quickstart | 已完成 | `vcjob-sleep` 已在 `VM104` 上完成 `Pending -> Running -> Completed`，并采集到 `vcjob-ok` 日志 |
+| `ENV-27` Volcano capability queue | 已完成 | `cap-small capability.cpu=8` 已在 `VM104` 上验证为 `2 Running + 2 Pending` |
+| `ENV-27` Volcano reclaim/preempt | 进行中 | 已切换单节点测试配置到 `allocate, backfill, reclaim, preempt`；当前环境下 `reclaim` 与 `preempt` 已进入真实试验，但还没有稳定正向证据 |
 | `ENV-27` SGLang smoke | 已完成 | `latest-runtime` 已在 `VM104` 上完成真实 completion 验证；chart 启动命令、参数映射和探针路径已修正 |
 
 相关文档：
@@ -44,6 +47,10 @@
 - `examples/vm104-vllm-volcano-custom-queue-values.yaml`：`ENV-27` 上验证通过的 vLLM + Volcano custom queue values
 - `examples/vm104-vllm-volcano-auto-pg-values.yaml`：`ENV-27` 上验证通过的 vLLM + Volcano 自动 PodGroup values
 - `examples/vm104-vllm-volcano-gang-values.yaml`：`ENV-27` 上验证通过的 vLLM + Volcano gang values
+- `examples/volcano-vcjob-sleep.yaml`：单节点 `VCJob` quickstart smoke
+- `examples/volcano-capability-queue.yaml` / `examples/volcano-capability-demo.yaml`：单节点 `capability` 队列上限 smoke
+- `examples/volcano-capacity-queue-*.yaml` / `examples/volcano-capacity-demo-*.yaml`：单节点 `capacity/reclaim` 试验用例
+- `examples/volcano-priorityclass-*.yaml` / `examples/volcano-preempt-*.yaml`：单节点 `preempt` 试验用例
 - `examples/vm104-sglang-smoke-values.yaml`：`ENV-27` 上验证通过的 SGLang smoke values
 - `examples/vm104-llamacpp-smoke-values.yaml`：`ENV-27` 上验证通过的 llama.cpp smoke values
 

@@ -219,12 +219,12 @@ Volcano 官方介绍页把能力分成几大类：
 
 ### P1：下一阶段
 
-1. `vllm replicas=2 + groupMinMember=2`
-2. `vcjob` quickstart
-3. `vcjob` policy（PodFailed / TaskCompleted）
-4. `capacity` + `deserved` + `capability`
-5. `priority/preempt`
-6. `reclaim`
+1. `vcjob` policy（PodFailed / TaskCompleted）
+2. `capacity` + `deserved` + `capability` 组合 smoke 固化
+3. `priority/preempt` 正向证据
+4. `reclaim` 正向证据
+5. `queue priority`
+6. `hierarchical queue`
 
 ### P2：高级能力
 
@@ -244,12 +244,15 @@ Volcano 官方介绍页把能力分成几大类：
 2. `vllm + volcano + custom queue` 成功
 3. `vllm + volcano + auto PodGroup` 成功
 4. `vllm replicas=2 + groupMinMember=2` gang 成功
-5. pod 事件来自 `volcano`
-6. 显式 `PodGroup` 与自动 `PodGroup` 都已收集到真实证据
-7. `/health`
-8. `/v1/models`
-9. `/v1/chat/completions`
-10. `vcctl` 已完成 `queue close/open` 状态切换实测
+5. `VCJob` quickstart 成功
+6. `capability` 队列上限成功
+7. pod 事件来自 `volcano`
+8. 显式 `PodGroup` 与自动 `PodGroup` 都已收集到真实证据
+9. `/health`
+10. `/v1/models`
+11. `/v1/chat/completions`
+12. `vcctl` 已完成 `queue close/open` 状态切换实测
+13. `reclaim` / `preempt` 已进入真实单节点试验阶段，但还没有稳定正向证据
 
 并且收到了一个真实 chart bug：
 
