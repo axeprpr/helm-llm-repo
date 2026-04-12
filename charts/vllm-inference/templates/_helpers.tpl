@@ -144,6 +144,9 @@ Build unified pod annotations from all sources (scheduler, user, annotations).
 {{- if and (eq .Values.scheduler.type "hami") .Values.scheduler.hami.gpuSchedulerPolicy }}
 {{- $_ := set $annos "hami.io/gpu-scheduler-policy" .Values.scheduler.hami.gpuSchedulerPolicy }}
 {{- end }}
+{{- if and (eq .Values.scheduler.type "volcano") (hasKey .Values.scheduler "volcano") (.Values.scheduler.volcano.createPodGroup | default false) }}
+{{- $_ := set $annos "scheduling.k8s.io/group-name" (include "vllm-inference.fullname" .) }}
+{{- end }}
 {{- toYaml $annos }}
 {{- end }}
 {{/*

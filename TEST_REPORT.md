@@ -87,6 +87,131 @@ Key operational note:
 
 ---
 
+## 2026-04-12 ENV-27 / VM104 vLLM + Volcano Smoke
+
+What was verified:
+
+- `charts/vllm-inference` works with `scheduler.type=volcano` on `VM104`
+- the chart now sets `scheduling.k8s.io/group-name` automatically when `scheduler.volcano.createPodGroup=true`
+- the explicit `PodGroup` created by the chart is the one actually used by the pod
+
+Real evidence collected:
+
+- pod event `Scheduled` came from `volcano`
+- `PodGroup` `vllm-volcano-smoke-vllm-inference` reached `Running`
+- pod reached `1/1 Ready`
+- `/health` returned `200`
+- `/v1/models` returned `Qwen/Qwen2.5-0.5B-Instruct`
+- real `/v1/chat/completions` returned a completion payload through the Volcano-scheduled pod
+
+Working values file:
+
+- `examples/vm104-vllm-volcano-smoke-values.yaml`
+
+Operational notes:
+
+- before the chart fix, Volcano auto-created an anonymous PodGroup because the pod was missing `scheduling.k8s.io/group-name`
+- the explicit chart-created `PodGroup` stayed `Inqueue` while the anonymous one ran; that was a real chart bug
+- this smoke uses a single replica and validates Volcano scheduling integration, not multi-replica gang scheduling
+
+---
+
+## 2026-04-12 ENV-27 / VM104 vLLM + Volcano custom queue smoke
+
+What was verified:
+
+- `smoke-queue` can be referenced by `charts/vllm-inference`
+- the explicit `PodGroup` correctly records `spec.queue=smoke-queue`
+- the workload is scheduled by `volcano` from the custom queue and serves real traffic
+
+Real evidence collected:
+
+- `Queue smoke-queue` remained `Open` during the positive-path smoke
+- `PodGroup vllm-volcano-queue-vllm-inference` reached `Running`
+- `PodGroup.spec.queue` was `smoke-queue`
+- pod event `Scheduled` came from `volcano`
+- service IP: `10.105.125.196`
+- `/health` returned `200`
+- `/v1/models` returned `Qwen/Qwen2.5-0.5B-Instruct`
+- real `/v1/chat/completions` returned `queue-ok`
+
+Working values file:
+
+- `examples/vm104-vllm-volcano-custom-queue-values.yaml`
+
+---
+
+## 2026-04-12 ENV-27 / VM104 vLLM + Volcano auto PodGroup smoke
+
+What was verified:
+
+- `scheduler.volcano.createPodGroup=false` works with `charts/vllm-inference`
+- Volcano auto-creates an anonymous `podgroup-<uid>` and schedules the workload successfully
+
+Real evidence collected:
+
+- the workload reached `1/1 Ready`
+- Volcano auto-created `podgroup-43aa6b5d-d6de-49bc-b032-a0a846426b5b`
+- pod event `Scheduled` came from `volcano`
+- service IP: `10.103.232.16`
+- `/health` returned `200`
+- `/v1/models` returned `Qwen/Qwen2.5-0.5B-Instruct`
+- real `/v1/chat/completions` returned `auto-ok`
+
+Working values file:
+
+- `examples/vm104-vllm-volcano-auto-pg-values.yaml`
+
+---
+
+## 2026-04-12 ENV-27 / VM104 vLLM + Volcano gang smoke
+
+What was verified:
+
+- `replicaCount=2` with `scheduler.volcano.groupMinMember=2` works on `VM104`
+- both replicas are coordinated by the explicit chart-created `PodGroup`
+- the resulting deployment serves real traffic
+
+Real evidence collected:
+
+- deployment reached `2/2 Available`
+- both pods reached `1/1 Running`
+- `PodGroup vllm-volcano-gang-vllm-inference` reached `Running`
+- `MINMEMBER=2`
+- `RUNNINGS=2`
+- service IP: `10.98.28.21`
+- `/health` returned `200`
+- `/v1/models` returned `Qwen/Qwen2.5-0.5B-Instruct`
+- real `/v1/chat/completions` returned `gang-ok`
+
+Working values file:
+
+- `examples/vm104-vllm-volcano-gang-values.yaml`
+
+---
+
+## 2026-04-12 ENV-27 / VM104 Volcano queue close/open
+
+What was verified:
+
+- the official `vcctl` CLI can operate `smoke-queue`
+- queue state transitions `Open -> Closing -> Closed -> Open` succeed on this cluster
+
+Real evidence collected:
+
+- `vcctl queue operate -n smoke-queue -a close` changed the queue from `Open` to `Closing`
+- after existing running workloads on `smoke-queue` were removed, the queue became `Closed`
+- a new release created while the queue was `Closed` still entered `smoke-queue`
+- once GPU resources were released, the workload was eventually scheduled and its `PodGroup` reached `Running`
+- `vcctl queue operate -n smoke-queue -a open` returned the queue to `Open`
+
+Operational conclusion:
+
+- on this tested `Volcano v1.10.0` environment, `Closed` was confirmed as a state transition, but it was **not** confirmed as a hard block that prevents all newly created workloads from eventually being scheduled
+- this result should be treated as observed version behavior, not as proof of stronger queue admission semantics
+
+---
+
 ## 2026-04-04 Current Session Status
 
 This session was intended to re-run a real deployment validation for

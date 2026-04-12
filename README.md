@@ -22,11 +22,15 @@
 | 能力 | 当前状态 | 说明 |
 |------|----------|------|
 | Volcano 模板支持 | 已支持 | 三个推理 Chart 都支持 `scheduler.type=volcano`，并可渲染 `PodGroup` |
-| Volcano 真实运行证据 | 部分完成 | `ENV-42` 已验证 `PodGroup` 创建与排队；单 Pod 走到 Volcano 绑定后在 kubelet 侧复现 `UnexpectedAdmissionError`；真正的 2 副本 gang 成功证据仍缺失 |
+| Volcano 真实运行证据 | 已形成 P0 基线 | `ENV-27 / VM104` 已完成显式 `PodGroup`、自动 `PodGroup`、custom queue、`replicas=2 + groupMinMember=2` gang 与真实 completion 验证；`queue close/open` 也已通过 `vcctl` 实测，但 `Closed` 队列对新 workload 的表现需按当前版本行为解读 |
 | HAMi 模板支持 | 已支持 | 三个推理 Chart 都支持 `scheduler.type=hami` |
 | HAMi 高级策略渲染 | 部分支持 | `vllm-inference` 已显式渲染 `hami.io/node-scheduler-policy`、`hami.io/gpu-scheduler-policy` 和 `nvidia.com/gpumem-percentage`；其他两个 Chart 仍主要依赖通用 `scheduler.annotations.*` |
 | HAMi 真实运行证据 | 部分完成 | `ENV-42` 已验证单 Pod HAMi 调度与 GPU UUID 分配；多 Pod 同卡 vGPU 共享证据仍缺失 |
 | `ENV-27` vLLM smoke | 已完成 | `runtimeClassName: nvidia` + `v0.17.1-x86_64` 已在 `VM104` 上完成真实 completion 验证 |
+| `ENV-27` vLLM + Volcano smoke | 已完成 | `scheduler.type=volcano` + 显式 `PodGroup` 已在 `VM104` 上完成真实 completion 验证；chart 已修复 `createPodGroup` 时缺少 `scheduling.k8s.io/group-name` 的问题 |
+| `ENV-27` Volcano custom queue | 已完成 | `smoke-queue` 上已完成真实 completion 验证，`PodGroup.spec.queue` 与 `Scheduled from volcano` 证据已采集 |
+| `ENV-27` Volcano auto PodGroup | 已完成 | `createPodGroup=false` 路径已验证，Volcano 会创建匿名 `podgroup-<uid>` 并完成真实 completion |
+| `ENV-27` Volcano gang smoke | 已完成 | `replicas=2 + groupMinMember=2` 已在 `VM104` 上完成 `2/2 Available` 与真实 completion 验证 |
 | `ENV-27` SGLang smoke | 已完成 | `latest-runtime` 已在 `VM104` 上完成真实 completion 验证；chart 启动命令、参数映射和探针路径已修正 |
 
 相关文档：
@@ -34,7 +38,12 @@
 - `TEST_REPORT.md`：当前已采集的真实运行结果
 - `TEST_PROCESS.md`：`ENV-27` 补测过程与本次沙箱阻断记录
 - `TEST_CASES.md`：当前保留的真实 smoke / regression 用例
+- `VOLCANO_TEST_GUIDE.zh-CN.md`：Volcano 官方能力覆盖矩阵与分阶段测试指南
 - `examples/vm104-vllm-smoke-values.yaml`：`ENV-27` 上验证通过的 vLLM smoke values
+- `examples/vm104-vllm-volcano-smoke-values.yaml`：`ENV-27` 上验证通过的 vLLM + Volcano smoke values
+- `examples/vm104-vllm-volcano-custom-queue-values.yaml`：`ENV-27` 上验证通过的 vLLM + Volcano custom queue values
+- `examples/vm104-vllm-volcano-auto-pg-values.yaml`：`ENV-27` 上验证通过的 vLLM + Volcano 自动 PodGroup values
+- `examples/vm104-vllm-volcano-gang-values.yaml`：`ENV-27` 上验证通过的 vLLM + Volcano gang values
 - `examples/vm104-sglang-smoke-values.yaml`：`ENV-27` 上验证通过的 SGLang smoke values
 - `examples/vm104-llamacpp-smoke-values.yaml`：`ENV-27` 上验证通过的 llama.cpp smoke values
 
