@@ -26,4 +26,4 @@ GGUF Model Notes:
 - Use GGUF format models from HuggingFace (e.g. TheBloke/*-GGUF)
 - Set ggufFile to specify the exact GGUF file (e.g. Qwen2.5-7B-Instruct-Q4_K_M.gguf)
 - For GPU: set gpuType=nvidia/amd/musa/vulkan
-- For CPU-only: set gpuType=none (uses server-cpu image)
+- For CPU-only: set gpuType=none (uses server image)

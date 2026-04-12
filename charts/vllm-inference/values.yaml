@@ -3,9 +3,10 @@
 replicaCount: 1
 
 image:
-  repository: ghcr.io/vllm-project/vllm-openai
+  repository: docker.io/vllm/vllm-openai
   pullPolicy: IfNotPresent
-  tag: "0.18.0"
+  tag: "latest"
+imagePullSecrets: []
 
 # Model configuration
 model:
@@ -223,11 +224,5 @@ metrics:
     annotations: {}
 
 # Volumes and volume mounts
-volumes:
-  - name: model-cache
-    hostPath:
-      path: /mnt/models
-      type: Directory
-volumeMounts:
-  - name: model-cache
-    mountPath: /HF_cache
+volumes: []
+volumeMounts: []

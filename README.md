@@ -30,7 +30,6 @@
 
 相关文档：
 
-- `TEST_SCENARIOS.md`：调度器测试场景与证据标准
 - `TEST_REPORT.md`：当前已采集的真实运行结果
 - `TEST_PROCESS.md`：`ENV-27` 补测过程与本次沙箱阻断记录
 

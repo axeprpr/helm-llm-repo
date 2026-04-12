@@ -47,9 +47,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- else if eq .Values.gpuType "intel" }}
 {{- $base = append $base (dict "key" "gpu.intel.com/tile" "operator" "Exists" "effect" "NoSchedule") }}
 {{- end }}
-{{- $user := .Values.tolerations | default list }}
-{{- $combined := concat $base $user | uniq }}
-{{- toYaml $combined }}
+{{- toYaml $base }}
 {{- end }}
 
 {{/*

@@ -54,7 +54,7 @@ $ git branch -a --verbose --no-abbrev
   remotes/origin/main       f41ecacd1ce2aab2c1e2a0eea819f39136c21804 docs: add detailed ENV-27 test process (Chinese), fix RBAC for HAMi scheduler
 
 $ rg -n "TODO|FIXME|WIP|XXX|TBD|incomplete|pending" .
-./TEST_SCENARIOS.md:533:- `PodGroup` remains queued or pending until the full gang is feasible
+Volcano 的真实问题仍然是：`PodGroup` 会保持 queued 或 pending，直到完整 gang 可满足。
 ```
 
 审计发现：

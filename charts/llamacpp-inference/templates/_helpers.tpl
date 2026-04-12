@@ -49,14 +49,14 @@ Select the correct llama.cpp backend image tag based on gpuType.
 References: GPUStack community-inference-backends.yaml
 */}}
 {{- define "llamacpp-inference.backendImage" -}}
-{{- $base := .Values.image.repository | default "ghcr.io/ggerganov/llama.cpp" }}
+{{- $base := .Values.image.repository | default "ghcr.io/ggml-org/llama.cpp" }}
 {{- $tag := .Values.image.tag | default "" }}
 {{- if and .Values.image.autoBackend (not $tag) }}
 {{- if eq .Values.gpuType "nvidia" }}{{- $tag = "server-cuda" }}
 {{- else if eq .Values.gpuType "amd" }}{{- $tag = "server-rocm" }}
 {{- else if eq .Values.gpuType "musa" }}{{- $tag = "server-musa" }}
 {{- else if or (eq .Values.gpuType "vulkan") (eq .Values.gpuType "intel") }}{{- $tag = "server" }}
-{{- else if eq .Values.gpuType "none" }}{{- $tag = "server-cpu" }}
+{{- else if eq .Values.gpuType "none" }}{{- $tag = "server" }}
 {{- end }}
 {{- end }}
 {{- printf "%s:%s" $base $tag }}
@@ -70,12 +70,11 @@ References: GPUStack llama.cpp backend config
 {{- $args := list }}
 {{- /* Model source */ -}}
 {{- if .Values.model.downloadOnStartup }}
-{{- $args = append $args "-hf" }}
-{{- if .Values.model.ggufFile }}
-{{- $quant := (trimSuffix ".gguf" .Values.model.ggufFile | splitList "-" | last | upper) }}
-{{- $args = append $args (printf "%s:%s" .Values.model.name $quant) }}
-{{- else }}
+{{- $args = append $args "--hf-repo" }}
 {{- $args = append $args .Values.model.name }}
+{{- if .Values.model.ggufFile }}
+{{- $args = append $args "--hf-file" }}
+{{- $args = append $args .Values.model.ggufFile }}
 {{- end }}
 {{- else if .Values.model.ggufFile }}
 {{- $args = append $args "-m" }}
@@ -85,7 +84,8 @@ References: GPUStack llama.cpp backend config
 {{- $args = append $args .Values.model.name }}
 {{- end }}
 {{- /* API server */ -}}
-{{- $args = append $args "-fa" }}
+{{- $args = append $args "--flash-attn" }}
+{{- $args = append $args "auto" }}
 {{- /* Host/Port */ -}}
 {{- $args = append $args "--host" }}
 {{- $args = append $args "0.0.0.0" }}
@@ -96,8 +96,8 @@ References: GPUStack llama.cpp backend config
 {{- $args = append $args "--ctx-size" }}
 {{- $args = append $args (printf "%d" (int .Values.engine.contextSize)) }}
 {{- end }}
-{{- /* GPU layers */ -}}
-{{- if .Values.engine.gpuLayers }}
+{{- /* GPU layers: omit for CPU-only deployments */ -}}
+{{- if and (ne .Values.gpuType "none") .Values.engine.gpuLayers }}
 {{- $args = append $args "--n-gpu-layers" }}
 {{- $args = append $args (printf "%d" (int .Values.engine.gpuLayers)) }}
 {{- end }}
@@ -137,9 +137,7 @@ References: GPUStack llama.cpp backend config
 {{- else if eq .Values.gpuType "intel" }}
 {{- $base = append $base (dict "key" "gpu.intel.com/tile" "operator" "Exists" "effect" "NoSchedule") }}
 {{- end }}
-{{- $user := .Values.tolerations | default list }}
-{{- $combined := concat $base $user | uniq }}
-{{- toYaml $combined }}
+{{- toYaml $base }}
 {{- end }}
 
 {{- define "llamacpp-inference.schedulerName" -}}
