@@ -12,13 +12,13 @@ What was verified:
   - `--model-path`
   - `--context-length`
   - `--mem-fraction-static`
-- the chart now uses `/get_model_info` for startup, readiness, and liveness probes
+- the chart now uses `/model_info` for startup, readiness, and liveness probes
 - `latest-runtime` is the validated image tag on this node
 
 Real evidence collected:
 
-- pod reached `1/1 Ready`
-- `/get_model_info` returned `200`
+- pod reached `1/1 Ready` and remained `1/1 Running`
+- `/model_info` returned `200`
 - `/v1/models` returned `Qwen/Qwen2.5-0.5B-Instruct`
 - real `/v1/chat/completions` returned a completion payload
 
@@ -30,6 +30,7 @@ Operational notes:
 
 - the containerd daemon on this node cannot reach `registry-1.docker.io:443` directly; first pull may require proxy-assisted pre-pull
 - `/health` still returns `503` on this tested SGLang build even after the server is usable, so probe path must not use `/health`
+- with `max_tokens=8`, the completion returned a truncated but valid response payload; service health was verified by endpoint success, not by exact-string matching
 
 ---
 

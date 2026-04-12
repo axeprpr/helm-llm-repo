@@ -27,7 +27,7 @@
 | HAMi 高级策略渲染 | 部分支持 | `vllm-inference` 已显式渲染 `hami.io/node-scheduler-policy`、`hami.io/gpu-scheduler-policy` 和 `nvidia.com/gpumem-percentage`；其他两个 Chart 仍主要依赖通用 `scheduler.annotations.*` |
 | HAMi 真实运行证据 | 部分完成 | `ENV-42` 已验证单 Pod HAMi 调度与 GPU UUID 分配；多 Pod 同卡 vGPU 共享证据仍缺失 |
 | `ENV-27` vLLM smoke | 已完成 | `runtimeClassName: nvidia` + `v0.17.1-x86_64` 已在 `VM104` 上完成真实 completion 验证 |
-| `ENV-27` SGLang smoke | 已完成 | `latest-runtime` 已在 `VM104` 上完成真实 completion 验证；chart 启动命令、参数映射、探针路径已修正 |
+| `ENV-27` SGLang smoke | 已完成 | `latest-runtime` 已在 `VM104` 上完成真实 completion 验证；chart 启动命令、参数映射和探针路径已修正 |
 
 相关文档：
 

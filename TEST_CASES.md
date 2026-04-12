@@ -71,7 +71,7 @@ Goal:
 
 - Deploy `charts/sglang-inference`
 - Wait for `1/1 Running`
-- Verify `/get_model_info`
+- Verify `/model_info`
 - Verify `/v1/models`
 - Verify one real `/v1/chat/completions`
 
@@ -88,7 +88,7 @@ Checks:
 ```bash
 kubectl -n llm-test rollout status deploy/sglang-smoke-sglang-inference --timeout=300s
 kubectl -n llm-test get pods -l app.kubernetes.io/instance=sglang-smoke -o wide
-curl -fsS http://<service-or-clusterip>:8000/get_model_info
+curl -fsS http://<service-or-clusterip>:8000/model_info
 curl -fsS http://<service-or-clusterip>:8000/v1/models
 curl -fsS http://<service-or-clusterip>:8000/v1/chat/completions \
   -H 'Content-Type: application/json' \
@@ -98,7 +98,7 @@ curl -fsS http://<service-or-clusterip>:8000/v1/chat/completions \
 Pass criteria:
 
 - `Ready=1/1`
-- `/get_model_info` returns `200`
+- `/model_info` returns `200`
 - `/v1/models` returns `Qwen/Qwen2.5-0.5B-Instruct`
 - chat response returns a non-empty completion
 
@@ -107,7 +107,7 @@ Notes:
 - `runtimeClassName: nvidia` is required on this node.
 - `latest-runtime` is the validated tag on `VM104`.
 - This image is large. If containerd cannot pull from Docker Hub directly, pre-pull it through the configured proxy before rollout.
-- On this tested build, `/health` returns `503` even when the service is usable; use `/get_model_info` for probes.
+- On this tested build, `/health` returns `503` even when the service is usable; use `/model_info` for probes.
 
 ### Case 4: llama.cpp smoke, native scheduler, single 4090
 

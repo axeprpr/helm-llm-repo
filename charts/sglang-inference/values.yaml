@@ -122,19 +122,19 @@ ingress:
 # Health checks
 livenessProbe:
   httpGet:
-    path: /get_model_info
+    path: /model_info
     port: 8000
   initialDelaySeconds: 0
   periodSeconds: 10
 readinessProbe:
   httpGet:
-    path: /get_model_info
+    path: /model_info
     port: 8000
   initialDelaySeconds: 10
   periodSeconds: 5
 startupProbe:
   httpGet:
-    path: /get_model_info
+    path: /model_info
     port: 8000
   initialDelaySeconds: 10
   periodSeconds: 10
