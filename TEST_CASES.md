@@ -856,3 +856,93 @@ kubectl -n volcano-single logs -l volcano.sh/job-name=vcjob-restartjob --tail=20
 - `status.retryCount=1`
 - 最终 `status.state.phase=Failed`
 - 日志包含 `restart-me`
+
+## ENV-27 / VM104 Kthena
+
+### 用例 19：Kthena 控制面安装与资源链 Smoke
+
+测试内容：
+
+- 安装 Kthena 控制面
+- 验证 `kthena-router` 与 `kthena-controller-manager` Running
+- 提交一条 `ModelBooster`
+- 验证自动生成：
+  - `ModelServing`
+  - `ModelServer`
+  - `ModelRoute`
+
+测试场景：
+
+- 两节点集群：`vm104 + worker-1`
+- 真实 `kthena-install.yaml`
+- 当前环境对大 CRD 不适合直接 `kubectl apply`
+- 用于验证 Kthena 控制面和 CRD / controller 资源链是否可用
+
+执行命令：
+
+```bash
+kubectl create namespace kthena-system --dry-run=client -o yaml | kubectl apply -f -
+kubectl create -f ./kthena-install.yaml
+kubectl create namespace kthena-demo --dry-run=client -o yaml | kubectl apply -f -
+kubectl apply -f ./examples/kthena/tiny-gpt2-modelbooster.yaml
+```
+
+检查项：
+
+```bash
+kubectl -n kthena-system get deploy,pods,svc -o wide
+kubectl -n kthena-demo get modelbooster,modelserving,modelserver,modelroute
+kubectl -n kthena-demo get pods -o wide
+```
+
+通过标准：
+
+- `kthena-router` Running
+- `kthena-controller-manager` Running
+- `ModelBooster` 触发生成 `ModelServing`、`ModelServer`、`ModelRoute`
+- 至少有 1 个由 `ModelBooster` 派生出来的 Pod 被创建
+
+场景说明：
+
+- 当前环境里大 CRD 直接 `kubectl apply` 会因 `last-applied` 注解过大失败
+- 这条用例验证的是安装链路和控制器联动，不是最终 serving 稳定性
+
+### 用例 20：Kthena tiny-gpt2 downloader / runtime Smoke
+
+测试内容：
+
+- 提交 `tiny-gpt2` 的 `ModelBooster`
+- 验证 downloader 完成模型下载
+- 验证 runtime 启动并通过 `/health`
+
+测试场景：
+
+- 两节点集群：`vm104 + worker-1`
+- 使用 `sshleifer/tiny-gpt2` 缩小模型体积
+- 用于隔离 Kthena 本身链路，不被大模型下载时间主导
+
+执行命令：
+
+```bash
+kubectl -n kthena-demo apply -f ./examples/kthena/tiny-gpt2-modelbooster.yaml
+```
+
+检查项：
+
+```bash
+kubectl -n kthena-demo get pods -o wide
+kubectl -n kthena-demo logs <pod-name> -c downloader --tail=100
+kubectl -n kthena-demo logs <pod-name> -c runtime --tail=100
+kubectl -n kthena-demo describe pod <pod-name>
+```
+
+通过标准：
+
+- downloader 日志里模型文件下载完成
+- runtime 日志里出现服务启动
+- runtime `/health` 返回 `200`
+
+场景说明：
+
+- 这条用例当前已经拿到 downloader 和 runtime 的正向证据
+- 当前还没有把 `engine` 长时间稳定收敛到完整 Ready，因此不把它标记为“完整 serving 通过”

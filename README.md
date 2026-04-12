@@ -39,6 +39,7 @@
 | `ENV-27` Volcano multi-node preempt | 已完成 | `vm104 + worker-1` 两节点环境已完成真实抢占验证：高优先级 `VCJob` 触发低优先级任务被驱逐，并最终在 `worker-1` 成功运行 |
 | `ENV-27` Volcano reclaim | 试验中 | 单节点和两节点环境都已进入真实试验；当前 `Volcano v1.10.0` 环境下仍未得到稳定正向回收证据，日志持续显示 `Queue <...> can not reclaim` |
 | `ENV-27` SGLang smoke | 已完成 | `latest-runtime` 已在 `VM104` 上完成真实 completion 验证；chart 启动命令、参数映射和探针路径已修正 |
+| `ENV-27` Kthena install / ModelBooster chain | 部分完成 | `kthena-router` 和 `kthena-controller-manager` 已真实跑起；`ModelBooster -> ModelServing -> ModelServer -> ModelRoute` 资源链已验证；`downloader` 和 `runtime` 已收集到正向证据，但最终 engine serving 尚未稳定到完整 Ready |
 
 相关文档：
 
@@ -46,6 +47,7 @@
 - `TEST_PROCESS.md`：`ENV-27` 补测过程与本次沙箱阻断记录
 - `TEST_CASES.md`：当前保留的真实 smoke / regression 用例
 - `VOLCANO_TEST_GUIDE.zh-CN.md`：Volcano 官方能力覆盖矩阵与分阶段测试指南
+- `KTHENA_TEST_GUIDE.zh-CN.md`：Kthena 官方能力定位、真实安装记录、已验证链路与当前阻塞点
 - `examples/vm104-vllm-smoke-values.yaml`：`ENV-27` 上验证通过的 vLLM smoke values
 - `examples/vm104-vllm-volcano-smoke-values.yaml`：`ENV-27` 上验证通过的 vLLM + Volcano smoke values
 - `examples/vm104-vllm-volcano-custom-queue-values.yaml`：`ENV-27` 上验证通过的 vLLM + Volcano custom queue values
@@ -61,6 +63,8 @@
 - `examples/volcano-multi-node-preempt-low.yaml` / `examples/volcano-multi-node-preempt-high.yaml`：两节点 `preempt` 成功用例
 - `examples/vm104-sglang-smoke-values.yaml`：`ENV-27` 上验证通过的 SGLang smoke values
 - `examples/vm104-llamacpp-smoke-values.yaml`：`ENV-27` 上验证通过的 llama.cpp smoke values
+- `examples/kthena/tiny-gpt2-modelbooster.yaml`：`ENV-27` 上最小 Kthena `ModelBooster` 试验用例
+- `examples/kthena/qwen2.5-0.5b-modelbooster.yaml`：Kthena 官方 quickstart 的本地归档版本
 
 ---
 

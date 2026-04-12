@@ -1214,3 +1214,37 @@ Operational notes:
 - this is a real positive `preempt` result, not just a pending-state observation
 - after preemption, the lower-priority `VCJob` falls back to `Pending` because its `minAvailable=2` can no longer be satisfied
 - current `reclaim` tests in the same two-node environment still do not produce positive reclaim evidence
+
+---
+
+## 2026-04-12 ENV-27 / VM104 Kthena install / ModelBooster chain
+
+What was verified:
+
+- `kthena-router` and `kthena-controller-manager` can run on this cluster
+- `ModelBooster -> ModelServing -> ModelServer -> ModelRoute` resource generation works
+- `downloader` can fetch model files into cache
+- `runtime` can start and return `/health=200`
+
+Real evidence collected:
+
+- the official install bundle required `kubectl create` instead of `kubectl apply` for the large CRDs on this cluster
+- `kthena-system` deployments reached Running after controller and router images were preloaded into node `containerd`
+- applying a `ModelBooster` created:
+  - `ModelServing`
+  - `ModelServer`
+  - `ModelRoute`
+- the reduced `sshleifer/tiny-gpt2` case completed downloader fetch successfully
+- runtime logs showed service startup and repeated `GET /health ... 200`
+
+Working assets:
+
+- `KTHENA_TEST_GUIDE.zh-CN.md`
+- `examples/kthena/qwen2.5-0.5b-modelbooster.yaml`
+- `examples/kthena/tiny-gpt2-modelbooster.yaml`
+
+Operational notes:
+
+- node-side direct pulls to `ghcr.io` and `public.ecr.aws` were not reliable in this environment; proxy-assisted pre-pull plus `ctr -n k8s.io images import` was required
+- this validation proves Kthena control plane and the basic ModelBooster control chain are live
+- this validation does **not** yet prove a stable final serving pod for long-running production use
