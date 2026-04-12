@@ -1,11 +1,11 @@
-# Default values for vllm-inference chart
+# Default values for sglang-inference chart
 
 replicaCount: 1
 
 image:
   repository: lmsysorg/sglang
   pullPolicy: IfNotPresent
-  tag: "v0.5.9-cu129-amd64-runtime"
+  tag: "latest-runtime"
 imagePullSecrets: []
 
 # Model configuration
@@ -113,7 +113,7 @@ ingress:
   className: ""
   annotations: {}
   hosts:
-    - host: vllm.local
+    - host: sglang.local
       paths:
         - path: /
           pathType: Prefix
@@ -122,17 +122,23 @@ ingress:
 # Health checks
 livenessProbe:
   httpGet:
-    path: /health
+    path: /get_model_info
     port: 8000
-  initialDelaySeconds: 30
+  initialDelaySeconds: 0
   periodSeconds: 10
 readinessProbe:
   httpGet:
-    path: /health
+    path: /get_model_info
     port: 8000
   initialDelaySeconds: 10
   periodSeconds: 5
-startupProbe: {}
+startupProbe:
+  httpGet:
+    path: /get_model_info
+    port: 8000
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  failureThreshold: 90
 
 # Autoscaling
 autoscaling:

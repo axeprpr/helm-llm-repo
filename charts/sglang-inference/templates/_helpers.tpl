@@ -79,12 +79,13 @@ GPU tolerations based on gpuType
 {{- end }}
 
 {{/*
-Build vLLM command arguments
+Build SGLang server arguments
 */}}
 {{- define "sglang-inference.engineArgs" -}}
 {{- $args := list }}
-{{- $args = append $args (printf "--model %s" .Values.model.name) }}
-{{- $args = append $args (printf "--trust-remote-code") }}
+{{- $args = append $args (printf "--model-path %s" .Values.model.name) }}
+{{- $args = append $args "--host 0.0.0.0" }}
+{{- $args = append $args "--trust-remote-code" }}
 {{- if .Values.model.hfToken }}
 {{- $args = append $args (printf "--hf-token %s" .Values.model.hfToken) }}
 {{- end }}
@@ -97,8 +98,8 @@ Build vLLM command arguments
 {{- if .Values.engine.pipelineParallelSize }}
 {{- $args = append $args (printf "--pipeline-parallel-size %d" (int .Values.engine.pipelineParallelSize)) }}
 {{- end }}
-{{- $args = append $args (printf "--gpu-memory-utilization %.2f" .Values.engine.gpuMemoryUtilization) }}
-{{- $args = append $args (printf "--max-model-len %d" (int .Values.engine.maxModelLen)) }}
+{{- $args = append $args (printf "--mem-fraction-static %.2f" .Values.engine.gpuMemoryUtilization) }}
+{{- $args = append $args (printf "--context-length %d" (int .Values.engine.maxModelLen)) }}
 {{- if .Values.engine.enablePrefixCaching }}
 {{- $args = append $args "--enable-prefix-caching" }}
 {{- end }}

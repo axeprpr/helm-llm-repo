@@ -4,7 +4,7 @@
 
 **Helm 仓库：** https://axeprpr.github.io/helm-llm-repo
 
-## 当前状态（2026-04-05）
+## 当前状态（2026-04-12）
 
 当前仓库已经包含 3 个可用推理 Chart：
 
@@ -26,12 +26,16 @@
 | HAMi 模板支持 | 已支持 | 三个推理 Chart 都支持 `scheduler.type=hami` |
 | HAMi 高级策略渲染 | 部分支持 | `vllm-inference` 已显式渲染 `hami.io/node-scheduler-policy`、`hami.io/gpu-scheduler-policy` 和 `nvidia.com/gpumem-percentage`；其他两个 Chart 仍主要依赖通用 `scheduler.annotations.*` |
 | HAMi 真实运行证据 | 部分完成 | `ENV-42` 已验证单 Pod HAMi 调度与 GPU UUID 分配；多 Pod 同卡 vGPU 共享证据仍缺失 |
-| `ENV-27` 补测 | 未完成 | 2026-04-05 当前工作区因沙箱禁止 SSH，未能新增真实集群结果 |
+| `ENV-27` vLLM smoke | 已完成 | `runtimeClassName: nvidia` + `v0.17.1-x86_64` 已在 `VM104` 上完成真实 completion 验证 |
+| `ENV-27` SGLang smoke | 已完成 | `latest-runtime` 已在 `VM104` 上完成真实 completion 验证；chart 启动命令、参数映射、探针路径已修正 |
 
 相关文档：
 
 - `TEST_REPORT.md`：当前已采集的真实运行结果
 - `TEST_PROCESS.md`：`ENV-27` 补测过程与本次沙箱阻断记录
+- `TEST_CASES.md`：当前保留的真实 smoke / regression 用例
+- `examples/vm104-vllm-smoke-values.yaml`：`ENV-27` 上验证通过的 vLLM smoke values
+- `examples/vm104-sglang-smoke-values.yaml`：`ENV-27` 上验证通过的 SGLang smoke values
 
 ---
 

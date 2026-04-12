@@ -1,7 +1,64 @@
 # Helm LLM Test Report
 
-Date: 2026-04-04
-Target node: `192.168.3.42` (`axe-master`)
+Date: 2026-04-12
+Target node: `192.168.23.27` (`vm104`)
+
+## 2026-04-12 ENV-27 / VM104 SGLang Smoke
+
+What was verified:
+
+- `charts/sglang-inference` now starts the server with `python3 -m sglang.launch_server`
+- the chart now maps SGLang-specific arguments correctly:
+  - `--model-path`
+  - `--context-length`
+  - `--mem-fraction-static`
+- the chart now uses `/get_model_info` for startup, readiness, and liveness probes
+- `latest-runtime` is the validated image tag on this node
+
+Real evidence collected:
+
+- pod reached `1/1 Ready`
+- `/get_model_info` returned `200`
+- `/v1/models` returned `Qwen/Qwen2.5-0.5B-Instruct`
+- real `/v1/chat/completions` returned a completion payload
+
+Working values file:
+
+- `examples/vm104-sglang-smoke-values.yaml`
+
+Operational notes:
+
+- the containerd daemon on this node cannot reach `registry-1.docker.io:443` directly; first pull may require proxy-assisted pre-pull
+- `/health` still returns `503` on this tested SGLang build even after the server is usable, so probe path must not use `/health`
+
+---
+
+## 2026-04-12 ENV-27 / VM104 vLLM Smoke
+
+What was verified:
+
+- host driver upgraded and active: `580.126.09`
+- `runtimeClassName: nvidia` required
+- `VLLM_ENABLE_CUDA_COMPATIBILITY` must stay unset on GeForce / RTX
+- `charts/vllm-inference` with `v0.17.1-x86_64` now serves real traffic
+
+Real evidence collected:
+
+- `/health` returned `200`
+- `/v1/models` returned `Qwen/Qwen2.5-0.5B-Instruct`
+- real `/v1/chat/completions` returned a completion
+- deleting the serving pod caused a successful Deployment self-heal and service recovery
+
+Working values file:
+
+- `examples/vm104-vllm-smoke-values.yaml`
+
+Key operational note:
+
+- enabling `VLLM_ENABLE_CUDA_COMPATIBILITY` on this GeForce RTX 4090 node caused `Error 803`
+- removing it was required for the successful smoke deployment
+
+---
 
 ## 2026-04-04 Current Session Status
 
@@ -766,4 +823,3 @@ volcano.sh/vgpu-*: 无      # Volcano vGPU device plugin 未安装
 1. **短期**：在 vllm-inference chart 中增加 initContainer workaround，注入 `CUDA_VISIBLE_DEVICES`
 2. **中期**：在集群中部署 Volcano vGPU device plugin，切换到方案 B
 3. **长期**：将 Hami chart 贡献 `CUDA_VISIBLE_DEVICES` injection 功能到上游
-

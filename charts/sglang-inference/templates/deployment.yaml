@@ -79,13 +79,13 @@ spec:
             # Multi-node setup
             apt-get update && apt-get install -y ssh-client
             {{- end }}
-            python -m sglang {{ include "sglang-inference.engineArgs" . | indent 12 }}
+            python3 -m sglang.launch_server {{ include "sglang-inference.engineArgs" . | indent 12 }}
         {{- else }}
         command:
           - /bin/bash
           - -c
           - |
-            python -m sglang {{ include "sglang-inference.engineArgs" . | indent 12 }}
+            python3 -m sglang.launch_server {{ include "sglang-inference.engineArgs" . | indent 12 }}
         {{- end }}
         ports:
         - name: http
