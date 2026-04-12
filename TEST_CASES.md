@@ -642,3 +642,131 @@ curl -fsS http://<service-or-clusterip>:8000/v1/chat/completions \
 - The in-process `--hf-repo/--hf-file` downloader was not reliable on this node and returned `common_download_file_single_online: HEAD failed`.
 - The validated path on `VM104` is `initContainer + curl -L` to a shared volume, then local `-m /models/...`.
 - The chart must support `initContainers.env`; this smoke depends on that.
+
+### 用例 14：Volcano 两节点 VCJob Gang
+
+测试内容：
+
+- 在 `vm104 + worker-1` 两节点环境中提交一个 `VCJob`
+- 设置 `minAvailable=3`
+- 每个 task 请求 `15 CPU`
+- 验证单节点无法容纳全部 task 时，Volcano 仍能把整个 gang 一次性拉起
+- 验证 3 个 task 会实际分布到两台节点
+
+测试场景：
+
+- 两节点集群
+- `vm104` 已有持续运行的 GPU 推理工作负载
+- `worker-1` 为纯 CPU worker
+- 用于验证多节点场景下的 `gang scheduling` 不只是状态变化，而是真正跨节点整组启动
+
+执行命令：
+
+```bash
+kubectl apply -f ./examples/volcano-multi-node-gang-vcjob.yaml
+```
+
+检查项：
+
+```bash
+kubectl -n volcano-single get job.batch.volcano.sh multi-gang-vcjob -o wide
+kubectl -n volcano-single get pods -l volcano.sh/job-name=multi-gang-vcjob -o wide
+kubectl -n volcano-system logs deploy/volcano-scheduler --since=10m | grep multi-gang-vcjob
+```
+
+通过标准：
+
+- `Job.status.phase=Running`
+- `RUNNINGS=3`
+- 3 个 pod 全部 `1/1 Running`
+- 至少 1 个 pod 落在 `worker-1`
+- 至少 1 个 pod 落在 `vm104`
+
+### 用例 15：Volcano 两节点 Binpack 观察
+
+测试内容：
+
+- 在两节点环境中提交 `2 replicas` 的普通 Deployment
+- 每个 pod 请求 `6 CPU`
+- 观察 Volcano 在现有节点负载下如何放置新 pod
+- 收集 scheduler 日志和最终节点分布
+
+测试场景：
+
+- 两节点集群
+- `vm104` 上已有较多常驻工作负载
+- `worker-1` 负载较轻
+- 用于验证 `binpack` 插件是否在当前版本和当前负载模型下给出稳定、可重复的正向证据
+
+执行命令：
+
+```bash
+kubectl apply -f ./examples/volcano-multi-node-binpack-demo.yaml
+```
+
+检查项：
+
+```bash
+kubectl -n volcano-single get pods -l app=binpack-demo -o wide
+kubectl -n volcano-system logs deploy/volcano-scheduler --since=10m | grep binpack-demo
+```
+
+通过标准：
+
+- 当前不定义为正式通过项
+- 需要在重复实验下得到稳定、可解释的节点聚集行为后，才升级为正式回归
+
+### 用例 16：Volcano 两节点 Preempt
+
+测试内容：
+
+- 在 `vm104 + worker-1` 两节点环境中先启动低优先级 `VCJob`
+- 让低优先级任务分别占住两台节点上的 CPU
+- 再提交高优先级 `VCJob`
+- 验证 Volcano 会驱逐低优先级 victim，并让高优先级任务最终落地运行
+
+测试场景：
+
+- 两节点集群
+- 使用 `PriorityClass`：
+  - `volcano-low=1000`
+  - `volcano-high=100000`
+- 低优先级作业：`2 replicas x 30 CPU`
+- 高优先级作业：`1 replica x 20 CPU`
+- 用于验证多节点场景下的真实 `preempt` 行为，而不是只看 Pending/Running 状态变化
+
+执行命令：
+
+```bash
+kubectl apply -f ./examples/volcano-priorityclass-low.yaml
+kubectl apply -f ./examples/volcano-priorityclass-high.yaml
+kubectl -n volcano-single apply -f ./examples/volcano-multi-node-preempt-low.yaml
+kubectl -n volcano-single apply -f ./examples/volcano-multi-node-preempt-high.yaml
+```
+
+检查项：
+
+```bash
+kubectl -n volcano-single get job.batch.volcano.sh preempt-low preempt-high -o wide
+kubectl -n volcano-single get pods -l volcano.sh/job-name=preempt-low -o wide
+kubectl -n volcano-single get pods -l volcano.sh/job-name=preempt-high -o wide
+kubectl -n volcano-single get events --sort-by=.lastTimestamp | tail -n 30
+kubectl -n volcano-system logs deploy/volcano-scheduler --since=10m | grep -Ei 'preempt|evict|victim|preempt-high|preempt-low'
+```
+
+通过标准：
+
+- `preempt-low` 先达到 `Running`
+- 提交 `preempt-high` 后，至少 1 个低优先级 pod 被 `Evict`
+- scheduler 日志出现：
+  - `Try to preempt`
+  - `Evicting pod ... because of preempt`
+- `preempt-high-runner-0` 最终 `1/1 Running`
+
+场景说明：
+
+- 这条用例已在 `VM104 + worker-1` 上通过
+- 当前采集到的硬证据包括：
+  - 调度器日志中的 `Try to preempt Task <volcano-single/preempt-low-runner-1> for Task <volcano-single/preempt-high-runner-0>`
+  - pod 事件中的 `Evict`
+  - `preempt-high-runner-0` 最终在 `worker-1` 成功运行

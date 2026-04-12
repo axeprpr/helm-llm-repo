@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: binpack-demo
+  namespace: volcano-single
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: binpack-demo
+  template:
+    metadata:
+      labels:
+        app: binpack-demo
+    spec:
+      schedulerName: volcano
+      containers:
+        - name: sleeper
+          image: docker.io/calico/node:v3.25.0
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - echo binpack-ok && sleep 300
+          resources:
+            requests:
+              cpu: "6"
+              memory: "128Mi"
+            limits:
+              cpu: "6"
+              memory: "128Mi"

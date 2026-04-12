@@ -221,7 +221,7 @@ Volcano 官方介绍页把能力分成几大类：
 
 1. `vcjob` policy（PodFailed / TaskCompleted）
 2. `capacity` + `deserved` + `capability` 组合 smoke 固化
-3. `priority/preempt` 正向证据
+3. 多节点 `priority/preempt` 正向证据
 4. `reclaim` 正向证据
 5. `queue priority`
 6. `hierarchical queue`
@@ -248,11 +248,14 @@ Volcano 官方介绍页把能力分成几大类：
 6. `capability` 队列上限成功
 7. pod 事件来自 `volcano`
 8. 显式 `PodGroup` 与自动 `PodGroup` 都已收集到真实证据
-9. `/health`
-10. `/v1/models`
-11. `/v1/chat/completions`
-12. `vcctl` 已完成 `queue close/open` 状态切换实测
-13. `reclaim` / `preempt` 已进入真实单节点试验阶段，但还没有稳定正向证据
+9. 两节点 `VCJob gang` 已完成真实跨节点验证
+10. `/health`
+11. `/v1/models`
+12. `/v1/chat/completions`
+13. `vcctl` 已完成 `queue close/open` 状态切换实测
+14. 两节点 `preempt` 已完成真实正向验证，包含 scheduler 日志、pod `Evict` 事件和高优先级任务最终落地
+15. `reclaim` 已在单节点和两节点环境进入真实试验阶段，但还没有稳定正向证据
+16. 两节点 `binpack` 已进入探索阶段，但还没有稳定正向证据
 
 并且收到了一个真实 chart bug：
 

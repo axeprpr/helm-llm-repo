@@ -1,0 +1,31 @@
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: multi-gang-vcjob
+  namespace: volcano-single
+spec:
+  minAvailable: 3
+  schedulerName: volcano
+  queue: default
+  maxRetry: 1
+  tasks:
+    - replicas: 3
+      name: runner
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: sleeper
+              image: docker.io/calico/node:v3.25.0
+              imagePullPolicy: IfNotPresent
+              command:
+                - sh
+                - -c
+                - echo multi-gang-ok && sleep 300
+              resources:
+                requests:
+                  cpu: "15"
+                  memory: "128Mi"
+                limits:
+                  cpu: "15"
+                  memory: "128Mi"

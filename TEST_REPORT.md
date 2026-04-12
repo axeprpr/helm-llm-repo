@@ -255,6 +255,63 @@ Working files:
 
 ---
 
+## 2026-04-12 ENV-27 / VM104 Volcano multi-node gang
+
+What was verified:
+
+- `worker-1` was recovered from an old cluster state, reset, and re-joined to `vm104`
+- the worker was upgraded to `v1.32.13` to match the control plane
+- a two-node Volcano cluster now exists on `vm104 + worker-1`
+- a `VCJob` with `minAvailable=3` and `3 x 15CPU` can start as a single gang only when both nodes participate
+
+Real evidence collected:
+
+- `worker-1` joined and reached `Ready`
+- `multi-gang-vcjob` reached `Running`
+- `RUNNINGS=3`
+- `multi-gang-vcjob-runner-0` landed on `vm104`
+- `multi-gang-vcjob-runner-1` landed on `worker-1`
+- `multi-gang-vcjob-runner-2` landed on `vm104`
+
+Working file:
+
+- `examples/volcano-multi-node-gang-vcjob.yaml`
+
+Operational notes:
+
+- `worker-1` initially could not pull `kube-proxy` / `calico` images reliably from the public registry
+- the validated recovery path was:
+  - reset and join the node
+  - stream required images from `vm104`
+  - restart the system pods
+- `nvidia-device-plugin` also had to be restricted to `gpu=on` nodes to avoid crash noise on the CPU-only worker
+
+---
+
+## 2026-04-12 ENV-27 / VM104 Volcano binpack exploration
+
+What was attempted:
+
+- a two-node `Deployment` with `2 x 6CPU` pods was submitted under `schedulerName=volcano`
+- scheduler logs and final pod placement were collected to look for stable `binpack` evidence
+
+Real evidence collected:
+
+- `binpack-demo-c88c86f7c-d5lwj` landed on `vm104`
+- `binpack-demo-c88c86f7c-h2ggc` landed on `worker-1`
+- the current result does not prove a stable node-packing preference
+
+Conclusion:
+
+- this remains an exploratory case
+- it should not yet be treated as a passing `binpack` validation
+
+Working file:
+
+- `examples/volcano-multi-node-binpack-demo.yaml`
+
+---
+
 ## 2026-04-12 ENV-27 / VM104 Volcano reclaim exploration
 
 What was attempted:
@@ -1086,3 +1143,39 @@ volcano.sh/vgpu-*: 无      # Volcano vGPU device plugin 未安装
 1. **短期**：在 vllm-inference chart 中增加 initContainer workaround，注入 `CUDA_VISIBLE_DEVICES`
 2. **中期**：在集群中部署 Volcano vGPU device plugin，切换到方案 B
 3. **长期**：将 Hami chart 贡献 `CUDA_VISIBLE_DEVICES` injection 功能到上游
+
+---
+
+## 2026-04-12 ENV-27 / VM104 Volcano multi-node preempt
+
+What was verified:
+
+- a low-priority `VCJob` can first occupy both nodes
+- a later high-priority `VCJob` can trigger real Volcano preemption
+- the victim pod is evicted and the high-priority pod eventually runs on the reclaimed node
+
+Real evidence collected:
+
+- `preempt-low` first reached `Running` with:
+  - `preempt-low-runner-0` on `vm104`
+  - `preempt-low-runner-1` on `worker-1`
+- scheduler logs contained:
+  - `Try to preempt Task <volcano-single/preempt-low-runner-1> for Task <volcano-single/preempt-high-runner-0>`
+  - `Evicting pod volcano-single/preempt-low-runner-1, because of preempt`
+- pod events contained:
+  - `Evict`
+  - `Killing`
+- `preempt-high-runner-0` finally reached `1/1 Running` on `worker-1`
+
+Working assets:
+
+- `examples/volcano-priorityclass-low.yaml`
+- `examples/volcano-priorityclass-high.yaml`
+- `examples/volcano-multi-node-preempt-low.yaml`
+- `examples/volcano-multi-node-preempt-high.yaml`
+
+Operational notes:
+
+- this is a real positive `preempt` result, not just a pending-state observation
+- after preemption, the lower-priority `VCJob` falls back to `Pending` because its `minAvailable=2` can no longer be satisfied
+- current `reclaim` tests in the same two-node environment still do not produce positive reclaim evidence

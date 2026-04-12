@@ -1,0 +1,28 @@
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: preempt-low
+  namespace: volcano-single
+spec:
+  minAvailable: 2
+  schedulerName: volcano
+  queue: default
+  priorityClassName: volcano-low
+  tasks:
+    - replicas: 2
+      name: runner
+      template:
+        spec:
+          priorityClassName: volcano-low
+          restartPolicy: Never
+          containers:
+            - name: main
+              image: docker.io/calico/node:v3.25.0
+              command: ["/bin/sh", "-lc", "sleep 3600"]
+              resources:
+                requests:
+                  cpu: "30"
+                  memory: "128Mi"
+                limits:
+                  cpu: "30"
+                  memory: "128Mi"
