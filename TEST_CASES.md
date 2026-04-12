@@ -108,3 +108,47 @@ Notes:
 - `latest-runtime` is the validated tag on `VM104`.
 - This image is large. If containerd cannot pull from Docker Hub directly, pre-pull it through the configured proxy before rollout.
 - On this tested build, `/health` returns `503` even when the service is usable; use `/get_model_info` for probes.
+
+### Case 4: llama.cpp smoke, native scheduler, single 4090
+
+Goal:
+
+- Deploy `charts/llamacpp-inference`
+- Pre-download the GGUF file in an init container
+- Wait for `1/1 Running`
+- Verify `/health`
+- Verify `/v1/models`
+- Verify one real `/v1/chat/completions`
+
+Command:
+
+```bash
+helm upgrade --install llamacpp-smoke ./charts/llamacpp-inference \
+  -n llm-test --create-namespace \
+  -f ./examples/vm104-llamacpp-smoke-values.yaml
+```
+
+Checks:
+
+```bash
+kubectl -n llm-test rollout status deploy/llamacpp-smoke-llamacpp-inference --timeout=420s
+kubectl -n llm-test get pods -l app.kubernetes.io/instance=llamacpp-smoke -o wide
+curl -fsS http://<service-or-clusterip>:8000/health
+curl -fsS http://<service-or-clusterip>:8000/v1/models
+curl -fsS http://<service-or-clusterip>:8000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"qwen2.5-0.5b-instruct-q4_k_m.gguf","messages":[{"role":"user","content":"Reply with exactly: llamacpp-ok"}],"max_tokens":16,"temperature":0}'
+```
+
+Pass criteria:
+
+- `Ready=1/1`
+- `/health` returns `200`
+- `/v1/models` lists `qwen2.5-0.5b-instruct-q4_k_m.gguf`
+- chat response returns a non-empty completion
+
+Notes:
+
+- The in-process `--hf-repo/--hf-file` downloader was not reliable on this node and returned `common_download_file_single_online: HEAD failed`.
+- The validated path on `VM104` is `initContainer + curl -L` to a shared volume, then local `-m /models/...`.
+- The chart must support `initContainers.env`; this smoke depends on that.

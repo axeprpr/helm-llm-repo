@@ -36,6 +36,7 @@
 - `TEST_CASES.md`：当前保留的真实 smoke / regression 用例
 - `examples/vm104-vllm-smoke-values.yaml`：`ENV-27` 上验证通过的 vLLM smoke values
 - `examples/vm104-sglang-smoke-values.yaml`：`ENV-27` 上验证通过的 SGLang smoke values
+- `examples/vm104-llamacpp-smoke-values.yaml`：`ENV-27` 上验证通过的 llama.cpp smoke values
 
 ---
 

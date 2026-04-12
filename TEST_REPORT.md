@@ -33,6 +33,32 @@ Operational notes:
 
 ---
 
+## 2026-04-12 ENV-27 / VM104 llama.cpp Smoke
+
+What was verified:
+
+- `charts/llamacpp-inference` starts correctly against local GGUF files on this node
+- `initContainers.env` support was required to pass proxy variables into the prefetch step
+- the validated path on this node is `initContainer + curl -L` into a shared volume, then local `-m /models/...`
+
+Real evidence collected:
+
+- pod reached `1/1 Ready`
+- `/health` returned `{"status":"ok"}`
+- `/v1/models` listed `qwen2.5-0.5b-instruct-q4_k_m.gguf`
+- real `/v1/chat/completions` returned `llamacpp-ok`
+
+Working values file:
+
+- `examples/vm104-llamacpp-smoke-values.yaml`
+
+Operational notes:
+
+- the direct `--hf-repo/--hf-file` path was not reliable here and logged `common_download_file_single_online: HEAD failed`
+- GHCR image pulls also need the same proxy-assisted pre-pull strategy when containerd cannot reach `ghcr.io` directly
+
+---
+
 ## 2026-04-12 ENV-27 / VM104 vLLM Smoke
 
 What was verified:

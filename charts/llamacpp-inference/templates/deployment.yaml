@@ -58,10 +58,26 @@ spec:
         {{- range $c := .Values.initContainers }}
         - name: {{ $c.name }}
           image: {{ $c.image }}
-          {{- if $c.command }}command: {{ $c.command }}{{- end }}
-          {{- if $c.args }}args: {{ $c.args }}{{- end }}
-          {{- if $c.volumeMounts }}volumeMounts: {{- toYaml $c.volumeMounts | nindent 10 }}{{- end }}
-          {{- if $c.resources }}resources: {{- toYaml $c.resources | nindent 10 }}{{- end }}
+          {{- if $c.command }}
+          command:
+            {{- toYaml $c.command | nindent 12 }}
+          {{- end }}
+          {{- if $c.args }}
+          args:
+            {{- toYaml $c.args | nindent 12 }}
+          {{- end }}
+          {{- if $c.env }}
+          env:
+            {{- toYaml $c.env | nindent 12 }}
+          {{- end }}
+          {{- if $c.volumeMounts }}
+          volumeMounts:
+            {{- toYaml $c.volumeMounts | nindent 12 }}
+          {{- end }}
+          {{- if $c.resources }}
+          resources:
+            {{- toYaml $c.resources | nindent 12 }}
+          {{- end }}
         {{- end }}
       {{- end }}
       containers:
@@ -127,11 +143,26 @@ spec:
       {{- range $c := .Values.sidecars }}
       - name: {{ $c.name }}
         image: {{ $c.image }}
-        {{- if $c.command }}command: {{ $c.command }}{{- end }}
-        {{- if $c.args }}args: {{ $c.args }}{{- end }}
-        {{- if $c.env }}env: {{- toYaml $c.env | nindent 10 }}{{- end }}
-        {{- if $c.volumeMounts }}volumeMounts: {{- toYaml $c.volumeMounts | nindent 10 }}{{- end }}
-        {{- if $c.resources }}resources: {{- toYaml $c.resources | nindent 10 }}{{- end }}
+        {{- if $c.command }}
+        command:
+          {{- toYaml $c.command | nindent 10 }}
+        {{- end }}
+        {{- if $c.args }}
+        args:
+          {{- toYaml $c.args | nindent 10 }}
+        {{- end }}
+        {{- if $c.env }}
+        env:
+          {{- toYaml $c.env | nindent 10 }}
+        {{- end }}
+        {{- if $c.volumeMounts }}
+        volumeMounts:
+          {{- toYaml $c.volumeMounts | nindent 10 }}
+        {{- end }}
+        {{- if $c.resources }}
+        resources:
+          {{- toYaml $c.resources | nindent 10 }}
+        {{- end }}
       {{- end }}
       {{- end }}
       {{- if or .Values.persistence.enabled .Values.shm.enabled .Values.volumes }}
