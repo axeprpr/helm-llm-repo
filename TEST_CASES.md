@@ -770,3 +770,89 @@ kubectl -n volcano-system logs deploy/volcano-scheduler --since=10m | grep -Ei '
   - 调度器日志中的 `Try to preempt Task <volcano-single/preempt-low-runner-1> for Task <volcano-single/preempt-high-runner-0>`
   - pod 事件中的 `Evict`
   - `preempt-high-runner-0` 最终在 `worker-1` 成功运行
+
+### 用例 17：Volcano VCJob TaskCompleted -> CompleteJob
+
+测试内容：
+
+- 创建包含 `ps` 和 `worker` 两类 task 的 `VCJob`
+- `worker` task 配置：
+  - `event: TaskCompleted`
+  - `action: CompleteJob`
+- 验证两个 worker 完成后，整个 `VCJob` 会直接进入 `Completed`
+- 验证仍在运行的 `ps` task 会被终止
+
+测试场景：
+
+- 单节点 `VM104`
+- `schedulerName=volcano`
+- 使用 `docker.io/calico/node:v3.25.0`
+- 用于验证 `tasks.policies` 在 `TaskCompleted` 事件上的真实生效
+
+执行命令：
+
+```bash
+kubectl -n volcano-single apply -f ./examples/volcano-vcjob-taskcompleted.yaml
+kubectl -n volcano-single wait --for=jsonpath='{.status.state.phase}'=Running \
+  job.batch.volcano.sh/vcjob-taskcompleted --timeout=120s
+sleep 10
+```
+
+检查项：
+
+```bash
+kubectl -n volcano-single get job.batch.volcano.sh vcjob-taskcompleted -o wide
+kubectl -n volcano-single get pods -l volcano.sh/job-name=vcjob-taskcompleted -o wide
+kubectl -n volcano-single logs -l volcano.sh/job-name=vcjob-taskcompleted --tail=20
+```
+
+通过标准：
+
+- `vcjob-taskcompleted` 最终状态为 `Completed`
+- 两个 `worker` pod 为 `Completed`
+- `ps` pod 被转入 `Terminating`
+- 日志包含：
+  - `ps-start`
+  - `worker-ok`
+
+### 用例 18：Volcano VCJob PodFailed -> RestartJob
+
+测试内容：
+
+- 创建一个必然失败的 `VCJob`
+- 在 job 级别配置：
+  - `event: PodFailed`
+  - `action: RestartJob`
+- 验证失败后会执行 `RestartJob`
+- 验证在 `maxRetry=1` 下，最终会进入 `Failed`
+
+测试场景：
+
+- 单节点 `VM104`
+- `schedulerName=volcano`
+- 使用 `docker.io/calico/node:v3.25.0`
+- 用于验证 job 级 `policies` 在 `PodFailed` 事件上的真实生效
+
+执行命令：
+
+```bash
+kubectl -n volcano-single apply -f ./examples/volcano-vcjob-restartjob.yaml
+sleep 20
+```
+
+检查项：
+
+```bash
+kubectl -n volcano-single get job.batch.volcano.sh vcjob-restartjob -o yaml
+kubectl -n volcano-single get pods -l volcano.sh/job-name=vcjob-restartjob -o wide
+kubectl -n volcano-single get events --sort-by=.lastTimestamp | grep vcjob-restartjob | tail -n 20
+kubectl -n volcano-single logs -l volcano.sh/job-name=vcjob-restartjob --tail=20
+```
+
+通过标准：
+
+- `status.conditions` 中出现 `Restarting`
+- 事件包含 `Start to execute action RestartJob`
+- `status.retryCount=1`
+- 最终 `status.state.phase=Failed`
+- 日志包含 `restart-me`

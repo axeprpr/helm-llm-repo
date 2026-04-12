@@ -236,6 +236,41 @@ Operational notes:
 
 ---
 
+## 2026-04-12 ENV-27 / VM104 Volcano VCJob policy
+
+What was verified:
+
+- `tasks.policies` with `TaskCompleted -> CompleteJob` works on a real `VCJob`
+- job-level `policies` with `PodFailed -> RestartJob` also trigger correctly
+- `maxRetry=1` is enforced and the failing job ends in `Failed`
+
+Real evidence collected:
+
+- `vcjob-taskcompleted` reached `Completed`
+- both worker pods reached `Completed`
+- the still-running `ps` pod entered `Terminating`
+- logs contained:
+  - `ps-start`
+  - `worker-ok`
+- `vcjob-restartjob` status contained:
+  - `Restarting`
+  - `Failed`
+  - `retryCount: 1`
+- events contained:
+  - `Start to execute action RestartJob`
+
+Working assets:
+
+- `examples/volcano-vcjob-taskcompleted.yaml`
+- `examples/volcano-vcjob-restartjob.yaml`
+
+Operational notes:
+
+- the `RestartJob` case is validated as a lifecycle/action result, not as an eventually successful retry workload
+- with `maxRetry=1`, the correct expected end state is `Failed`, not `Completed`
+
+---
+
 ## 2026-04-12 ENV-27 / VM104 Volcano capability queue
 
 What was verified:

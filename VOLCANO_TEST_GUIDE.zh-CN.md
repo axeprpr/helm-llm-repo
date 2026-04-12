@@ -219,12 +219,10 @@ Volcano 官方介绍页把能力分成几大类：
 
 ### P1：下一阶段
 
-1. `vcjob` policy（PodFailed / TaskCompleted）
-2. `capacity` + `deserved` + `capability` 组合 smoke 固化
-3. 多节点 `priority/preempt` 正向证据
-4. `reclaim` 正向证据
-5. `queue priority`
-6. `hierarchical queue`
+1. `capacity` + `deserved` + `capability` 组合 smoke 固化
+2. `reclaim` 正向证据
+3. `queue priority`
+4. `hierarchical queue`
 
 ### P2：高级能力
 
@@ -245,17 +243,19 @@ Volcano 官方介绍页把能力分成几大类：
 3. `vllm + volcano + auto PodGroup` 成功
 4. `vllm replicas=2 + groupMinMember=2` gang 成功
 5. `VCJob` quickstart 成功
-6. `capability` 队列上限成功
-7. pod 事件来自 `volcano`
-8. 显式 `PodGroup` 与自动 `PodGroup` 都已收集到真实证据
-9. 两节点 `VCJob gang` 已完成真实跨节点验证
-10. `/health`
-11. `/v1/models`
-12. `/v1/chat/completions`
-13. `vcctl` 已完成 `queue close/open` 状态切换实测
-14. 两节点 `preempt` 已完成真实正向验证，包含 scheduler 日志、pod `Evict` 事件和高优先级任务最终落地
-15. `reclaim` 已在单节点和两节点环境进入真实试验阶段，但还没有稳定正向证据
-16. 两节点 `binpack` 已进入探索阶段，但还没有稳定正向证据
+6. `VCJob` policy：`TaskCompleted -> CompleteJob` 成功
+7. `VCJob` policy：`PodFailed -> RestartJob` 成功
+8. `capability` 队列上限成功
+9. pod 事件来自 `volcano`
+10. 显式 `PodGroup` 与自动 `PodGroup` 都已收集到真实证据
+11. 两节点 `VCJob gang` 已完成真实跨节点验证
+12. `/health`
+13. `/v1/models`
+14. `/v1/chat/completions`
+15. `vcctl` 已完成 `queue close/open` 状态切换实测
+16. 两节点 `preempt` 已完成真实正向验证，包含 scheduler 日志、pod `Evict` 事件和高优先级任务最终落地
+17. `reclaim` 已在单节点和两节点环境进入真实试验阶段，但还没有稳定正向证据
+18. 两节点 `binpack` 已进入探索阶段，但还没有稳定正向证据
 
 并且收到了一个真实 chart bug：
 

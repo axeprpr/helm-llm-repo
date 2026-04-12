@@ -32,6 +32,7 @@
 | `ENV-27` Volcano auto PodGroup | 已完成 | `createPodGroup=false` 路径已验证，Volcano 会创建匿名 `podgroup-<uid>` 并完成真实 completion |
 | `ENV-27` Volcano gang smoke | 已完成 | `replicas=2 + groupMinMember=2` 已在 `VM104` 上完成 `2/2 Available` 与真实 completion 验证 |
 | `ENV-27` Volcano VCJob quickstart | 已完成 | `vcjob-sleep` 已在 `VM104` 上完成 `Pending -> Running -> Completed`，并采集到 `vcjob-ok` 日志 |
+| `ENV-27` Volcano VCJob policy | 已完成 | `TaskCompleted -> CompleteJob` 与 `PodFailed -> RestartJob` 已在 `VM104` 上完成真实验证，状态流转和事件证据已采集 |
 | `ENV-27` Volcano capability queue | 已完成 | `cap-small capability.cpu=8` 已在 `VM104` 上验证为 `2 Running + 2 Pending` |
 | `ENV-27` Volcano multi-node gang | 已完成 | `vm104 + worker-1` 两节点环境已完成 `minAvailable=3` 的跨节点 `VCJob` gang 验证，3 个 task 整组启动并实际分布到两台节点 |
 | `ENV-27` Volcano binpack | 试验中 | 两节点环境已建立，`binpack-demo` 已收集到真实调度轨迹，但当前还没有稳定、可重复的正向 binpack 证据，暂不标记通过 |
@@ -51,6 +52,7 @@
 - `examples/vm104-vllm-volcano-auto-pg-values.yaml`：`ENV-27` 上验证通过的 vLLM + Volcano 自动 PodGroup values
 - `examples/vm104-vllm-volcano-gang-values.yaml`：`ENV-27` 上验证通过的 vLLM + Volcano gang values
 - `examples/volcano-vcjob-sleep.yaml`：单节点 `VCJob` quickstart smoke
+- `examples/volcano-vcjob-taskcompleted.yaml` / `examples/volcano-vcjob-restartjob.yaml`：单节点 `VCJob policy` 用例
 - `examples/volcano-capability-queue.yaml` / `examples/volcano-capability-demo.yaml`：单节点 `capability` 队列上限 smoke
 - `examples/volcano-capacity-queue-*.yaml` / `examples/volcano-capacity-demo-*.yaml`：单节点 `capacity/reclaim` 试验用例
 - `examples/volcano-priorityclass-*.yaml` / `examples/volcano-preempt-*.yaml`：单节点 `preempt` 试验用例
