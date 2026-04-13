@@ -1,92 +1,20 @@
 apiVersion: v1
 entries:
-  hami-scheduler:
-  - apiVersion: v2
-    appVersion: 2.7.1
-    created: "2026-04-13T05:43:43.970210404Z"
-    description: Skeleton chart placeholder for HAMi scheduler installation docs
-    digest: 9295b473d8f70e0afdaff86b6bb218ebd6576bb2eba13e65642f3342afbf7d69
-    home: https://github.com/axeprpr/helm-llm-repo
-    keywords:
-    - hami
-    - scheduler
-    - vgpu
-    - gpu
-    maintainers:
-    - email: axe3@qq.com
-      name: axeprpr
-    name: hami-scheduler
-    sources:
-    - https://github.com/axeprpr/helm-llm-repo
-    type: application
-    urls:
-    - https://axeprpr.github.io/helm-llm-repo/hami-scheduler-0.1.0.tgz
-    version: 0.1.0
-  llamacpp-inference:
-  - apiVersion: v2
-    appVersion: b8580
-    created: "2026-04-13T05:43:43.971002611Z"
-    description: llama.cpp high-throughput LLM inference engine Helm chart
-    digest: 4b1f99fa56b0bf4e0dc1bda770fc5fe486053e00576dbb94b2f23754abc30326
-    home: https://github.com/axeprpr/helm-llm-repo
-    keywords:
-    - llm
-    - llamacpp
-    - inference
-    - gpu
-    - nvidia
-    - ascend
-    - sglang
-    maintainers:
-    - email: axe3@qq.com
-      name: axeprpr
-    name: llamacpp-inference
-    sources:
-    - https://github.com/axeprpr/helm-llm-repo
-    type: application
-    urls:
-    - https://axeprpr.github.io/helm-llm-repo/llamacpp-inference-0.1.0.tgz
-    version: 0.1.0
-  sglang-inference:
-  - apiVersion: v2
-    appVersion: v0.5.9
-    created: "2026-04-13T05:43:43.971669814Z"
-    description: SGLang high-throughput LLM inference engine Helm chart
-    digest: 3e04e23b225cdfcddeafc6099cfcbfcaed583ad709cd7ae832fe62f7eab882ba
-    home: https://github.com/axeprpr/helm-llm-repo
-    keywords:
-    - llm
-    - SGLang
-    - inference
-    - gpu
-    - nvidia
-    - ascend
-    - sglang
-    maintainers:
-    - email: axe3@qq.com
-      name: axeprpr
-    name: sglang-inference
-    sources:
-    - https://github.com/axeprpr/helm-llm-repo
-    type: application
-    urls:
-    - https://axeprpr.github.io/helm-llm-repo/sglang-inference-0.1.0.tgz
-    version: 0.1.0
   vllm-inference:
   - apiVersion: v2
-    appVersion: 0.18.0
-    created: "2026-04-13T05:43:43.972390268Z"
-    description: vLLM high-throughput LLM inference engine Helm chart
-    digest: 76dbf770c704c18091394d2d967be7eb4b2625534d925b07dab48ddb840d0e12
+    appVersion: 0.17.1
+    created: "2026-04-13T07:06:02.702776255Z"
+    description: Single vLLM inference chart with native, Volcano, HAMi, and Kthena
+      modes
+    digest: d73b067b15c22f6c00e5dcf36625c5c27133d73625d6455a96f004732b972d9f
     home: https://github.com/axeprpr/helm-llm-repo
     keywords:
     - llm
     - vllm
     - inference
-    - gpu
-    - nvidia
-    - ascend
-    - sglang
+    - volcano
+    - hami
+    - kthena
     maintainers:
     - email: axe3@qq.com
       name: axeprpr
@@ -95,28 +23,6 @@ entries:
     - https://github.com/axeprpr/helm-llm-repo
     type: application
     urls:
-    - https://axeprpr.github.io/helm-llm-repo/vllm-inference-0.1.0.tgz
-    version: 0.1.0
-  volcano-scheduler:
-  - apiVersion: v2
-    appVersion: 1.10.0
-    created: "2026-04-13T05:43:43.972603375Z"
-    description: Skeleton chart placeholder for Volcano scheduler installation docs
-    digest: 5e1cd853efb520191bbf52178803a2d4f07cf122fb6c76e1c269e9eab322c4fb
-    home: https://github.com/axeprpr/helm-llm-repo
-    keywords:
-    - volcano
-    - scheduler
-    - batch
-    - gpu
-    maintainers:
-    - email: axe3@qq.com
-      name: axeprpr
-    name: volcano-scheduler
-    sources:
-    - https://github.com/axeprpr/helm-llm-repo
-    type: application
-    urls:
-    - https://axeprpr.github.io/helm-llm-repo/volcano-scheduler-0.1.0.tgz
-    version: 0.1.0
-generated: "2026-04-13T05:43:43.969863277Z"
+    - https://axeprpr.github.io/helm-llm-repo/vllm-inference-0.2.0.tgz
+    version: 0.2.0
+generated: "2026-04-13T07:06:02.701761134Z"
