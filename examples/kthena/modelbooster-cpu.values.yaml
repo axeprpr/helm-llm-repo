@@ -1,0 +1,31 @@
+workload:
+  mode: kthena-modelbooster
+
+image:
+  repository: public.ecr.aws/q9t5s3a7/vllm-cpu-release-repo
+  tag: latest
+
+model:
+  name: sshleifer/tiny-gpt2
+  servedName: tiny-gpt2
+
+engine:
+  maxModelLen: 2048
+
+resources:
+  limits:
+    cpu: "2"
+    memory: 4Gi
+  requests:
+    cpu: "1"
+    memory: 2Gi
+
+kthena:
+  backend:
+    cacheURI: hostpath://tmp/cache
+    env:
+      - name: HF_ENDPOINT
+        value: https://hf-mirror.com
+    server:
+      replicas: 1
+      pods: 1

@@ -1,64 +1,23 @@
-{{- $type := .Values.model.type | default "chat" -}}
-{{- $defaultModel := include "vllm-inference.defaultModel" . -}}
-{{- $modelName := .Values.model.name | default $defaultModel -}}
-{{- $fullname := include "vllm-inference.fullname" . -}}
-{{- $port := .Values.engine.port -}}
-{{- $ns := .Release.Namespace -}}
+{{- if eq (.Values.workload.mode | default "deployment") "kthena-modelbooster" -}}
+{{ include "vllm-inference.fullname" . }} 已以 Kthena ModelBooster 方式渲染。
 
-{{ $fullname }} deployed!
+模式: Kthena
+模型: {{ include "vllm-inference.modelName" . }}
+Model URI: {{ include "vllm-inference.modelURI" . }}
 
-Type: {{ $type }}
-Model: {{ $modelName }}
-Namespace: {{ $ns }}
+后续检查建议：
+- kubectl get modelbooster -n {{ .Release.Namespace }}
+- kubectl get modelserving,modelserver,modelroute -n {{ .Release.Namespace }}
+{{- else -}}
+{{ include "vllm-inference.fullname" . }} 已部署。
 
-{{ if eq $type "chat" -}}
-=== Chat / Text Generation ===
-{{ else if eq $type "embedding" -}}
-=== Embedding / Rerank ===
-{{ else if eq $type "vision" -}}
-=== Vision / Multimodal ===
-{{ end -}}
+模式: 原生 Deployment
+调度器: {{ .Values.scheduler.type }}
+模型: {{ include "vllm-inference.modelName" . }}
+命名空间: {{ .Release.Namespace }}
 
-API Endpoints:
-- /v1/chat/completions - Chat completion
-- /v1/completions     - Text completion
-{{ if or (eq $type "embedding") (eq $type "chat") }}
-- /v1/embeddings      - Generate embeddings
-{{ end }}
-{{ if eq $type "embedding" }}
-- /v1/rerank          - Rerank documents
-{{ end }}
-{{ if eq $type "vision" }}
-- /v1/chat/completions - Vision via multipart messages
-{{ end }}
-- /health             - Health check
-- /metrics            - Prometheus metrics
-
-{{ if eq $type "chat" -}}
-Chat Example:
-curl -X POST http://{{ $fullname }}.{{ $ns }}:{{ $port }}/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"model":"{{ $modelName }}","messages":[{"role":"user","content":"Hello!"}]}'
-{{ else if eq $type "embedding" -}}
-
-Embedding Example:
-curl -X POST http://{{ $fullname }}.{{ $ns }}:{{ $port }}/v1/embeddings \
-  -H "Content-Type: application/json" \
-  -d '{"input":"Hello world","model":"{{ $modelName }}"}'
-
-Rerank Example:
-curl -X POST http://{{ $fullname }}.{{ $ns }}:{{ $port }}/v1/rerank \
-  -H "Content-Type: application/json" \
-  -d '{"query":"Quantum computing","documents":["GPU computing","Cloud native"],"model":"{{ $modelName }}"}'
-{{ else if eq $type "vision" -}}
-
-Vision Example (image URL):
-curl -X POST http://{{ $fullname }}.{{ $ns }}:{{ $port }}/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"model":"{{ $modelName }}","messages":[{"role":"user","content":[{"type":"text","text":"Describe this image:"},{"type":"image_url","image_url":{"url":"https://example.com/photo.jpg"}}]}]}'
-
-Vision Example (base64):
-curl -X POST http://{{ $fullname }}.{{ $ns }}:{{ $port }}/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"model":"{{ $modelName }}","messages":[{"role":"user","content":[{"type":"text","text":"What is in this image?"},{"type":"image_url","image_url":{"url":"data:image/jpeg;base64,/9j/4AAQSkZ..."}}]}]}'
-{{ end -}}
+检查命令：
+- kubectl get pod -n {{ .Release.Namespace }}
+- kubectl get svc {{ include "vllm-inference.fullname" . }} -n {{ .Release.Namespace }}
+- kubectl port-forward svc/{{ include "vllm-inference.fullname" . }} 8000:{{ .Values.service.port }} -n {{ .Release.Namespace }}
+{{- end -}}

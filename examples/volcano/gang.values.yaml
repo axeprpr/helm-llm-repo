@@ -1,0 +1,29 @@
+replicaCount: 2
+
+image:
+  tag: v0.17.1-x86_64
+
+model:
+  name: Qwen/Qwen2.5-0.5B-Instruct
+
+scheduler:
+  type: volcano
+  volcano:
+    createPodGroup: true
+    groupMinMember: 2
+    queueName: smoke-queue
+
+engine:
+  maxModelLen: 2048
+  gpuMemoryUtilization: 0.6
+
+resources:
+  limits:
+    nvidia.com/gpu: "1"
+    cpu: "8"
+    memory: 24Gi
+  requests:
+    cpu: "4"
+    memory: 12Gi
+
+runtimeClassName: nvidia

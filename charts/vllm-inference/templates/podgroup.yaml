@@ -1,4 +1,4 @@
-{{- if and (eq .Values.scheduler.type "volcano") (hasKey .Values.scheduler "volcano") (.Values.scheduler.volcano.createPodGroup | default false) }}
+{{- if and (eq (.Values.workload.mode | default "deployment") "deployment") (eq .Values.scheduler.type "volcano") (.Values.scheduler.volcano.createPodGroup | default false) }}
 apiVersion: scheduling.volcano.sh/v1beta1
 kind: PodGroup
 metadata:

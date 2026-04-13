@@ -1,0 +1,32 @@
+workload:
+  mode: kthena-modelbooster
+
+image:
+  repository: docker.io/vllm/vllm-openai
+  tag: v0.17.1-x86_64
+
+model:
+  name: Qwen/Qwen2.5-0.5B-Instruct
+  servedName: qwen2.5-0.5b
+
+engine:
+  maxModelLen: 2048
+  gpuMemoryUtilization: 0.6
+
+resources:
+  limits:
+    nvidia.com/gpu: "1"
+    cpu: "8"
+    memory: 24Gi
+  requests:
+    cpu: "4"
+    memory: 12Gi
+
+kthena:
+  backend:
+    cacheURI: hostpath://tmp/cache
+    server:
+      replicas: 1
+      pods: 1
+      config:
+        max-num-batched-tokens: "4096"

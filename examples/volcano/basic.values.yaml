@@ -1,0 +1,31 @@
+image:
+  tag: v0.17.1-x86_64
+
+model:
+  name: Qwen/Qwen2.5-0.5B-Instruct
+
+workload:
+  mode: deployment
+
+scheduler:
+  type: volcano
+  volcano:
+    createPodGroup: true
+    groupMinMember: 1
+    queueName: default
+
+engine:
+  tensorParallelSize: 1
+  maxModelLen: 4096
+  gpuMemoryUtilization: 0.85
+
+resources:
+  limits:
+    nvidia.com/gpu: "1"
+    cpu: "8"
+    memory: 24Gi
+  requests:
+    cpu: "4"
+    memory: 12Gi
+
+runtimeClassName: nvidia

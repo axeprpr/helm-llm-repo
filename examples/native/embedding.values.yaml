@@ -1,0 +1,20 @@
+model:
+  name: BAAI/bge-m3
+  type: embedding
+
+engine:
+  embeddingTask: embed
+  poolerType: mean
+  maxModelLen: 8192
+  gpuMemoryUtilization: 0.8
+
+resources:
+  limits:
+    nvidia.com/gpu: "1"
+    cpu: "6"
+    memory: 16Gi
+  requests:
+    cpu: "3"
+    memory: 8Gi
+
+runtimeClassName: nvidia

@@ -1,0 +1,49 @@
+{{- if eq (.Values.workload.mode | default "deployment") "kthena-modelbooster" }}
+apiVersion: {{ .Values.kthena.apiVersion }}
+kind: {{ .Values.kthena.kind }}
+metadata:
+  name: {{ include "vllm-inference.fullname" . }}
+  labels:
+    {{- include "vllm-inference.labels" . | nindent 4 }}
+spec:
+  backend:
+    name: {{ .Values.kthena.backend.name }}
+    type: {{ .Values.kthena.backend.type }}
+    modelURI: {{ include "vllm-inference.modelURI" . }}
+    cacheURI: {{ .Values.kthena.backend.cacheURI }}
+    minReplicas: {{ .Values.kthena.backend.minReplicas }}
+    maxReplicas: {{ .Values.kthena.backend.maxReplicas }}
+    {{- with .Values.kthena.backend.env }}
+    env:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    workers:
+      - type: server
+        image: {{ include "vllm-inference.kthenaImage" . }}
+        replicas: {{ .Values.kthena.backend.server.replicas }}
+        pods: {{ .Values.kthena.backend.server.pods }}
+        config:
+          served-model-name: {{ include "vllm-inference.servedModelName" . | quote }}
+          max-model-len: {{ .Values.engine.maxModelLen | quote }}
+          gpu-memory-utilization: {{ .Values.engine.gpuMemoryUtilization | quote }}
+          tensor-parallel-size: {{ .Values.engine.tensorParallelSize | quote }}
+          pipeline-parallel-size: {{ .Values.engine.pipelineParallelSize | quote }}
+          {{- if .Values.model.trustRemoteCode }}
+          trust-remote-code: "true"
+          {{- end }}
+          {{- if eq .Values.model.type "embedding" }}
+          task: {{ .Values.engine.embeddingTask | quote }}
+          {{- end }}
+          {{- if .Values.model.reasoningParser }}
+          reasoning-parser: {{ .Values.model.reasoningParser | quote }}
+          {{- end }}
+          {{- with .Values.kthena.backend.server.config }}
+          {{- toYaml . | nindent 10 }}
+          {{- end }}
+        resources:
+          {{- if .Values.kthena.backend.server.resources }}
+          {{- toYaml .Values.kthena.backend.server.resources | nindent 10 }}
+          {{- else }}
+          {{- toYaml .Values.resources | nindent 10 }}
+          {{- end }}
+{{- end }}

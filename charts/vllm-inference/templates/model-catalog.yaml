@@ -3,7 +3,7 @@ GPUStack-style model catalog ConfigMap.
 Contains recommended models with context lengths and vLLM engine flags.
 Reference: GPUStack model-catalog.yaml (87 model sets)
 */}}
-{{- if .Values.modelCatalog.enabled }}
+{{- if and (eq (.Values.workload.mode | default "deployment") "deployment") .Values.modelCatalog.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:

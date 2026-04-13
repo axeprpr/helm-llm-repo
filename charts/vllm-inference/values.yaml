@@ -1,108 +1,130 @@
-# Default values for vllm-inference chart
+# 这个 chart 只负责 vLLM 推理服务。
+# 通过 workload.mode 和 scheduler.type，可以在同一份 values.yaml 里切换：
+# 1. 原生 Deployment
+# 2. Volcano 调度
+# 3. HAMi 调度
+# 4. Kthena ModelBooster
+
+nameOverride: ""
+fullnameOverride: ""
+
+workload:
+  # deployment: 渲染原生 Deployment/Service/Ingress
+  # kthena-modelbooster: 渲染 Kthena 的 ModelBooster，自身不再渲染 Deployment
+  mode: deployment
 
 replicaCount: 1
 
 image:
   repository: docker.io/vllm/vllm-openai
+  tag: "v0.17.1-x86_64"
   pullPolicy: IfNotPresent
-  tag: "latest"
 imagePullSecrets: []
 
-# Model configuration
 model:
-  # HuggingFace model ID or local path
+  # HuggingFace 模型名，原生 Deployment 模式下直接传给 `vllm serve`
   name: "Qwen/Qwen2.5-7B-Instruct"
-  # chat, embedding, vision
+  # 对外暴露的模型名。为空时默认复用 model.name
+  servedName: ""
+  # chat / embedding / vision
   type: chat
-  # Model format hint. The chart explicitly renders GPTQ/AWQ quantization flags;
-  # other formats rely on the model's own config/defaults.
+  # auto / awq / gptq
   format: auto
-  # Download on startup (requires internet)
+  # 是否允许 vLLM 信任远程代码
+  trustRemoteCode: true
+  # 是否由 vLLM 在启动时自行下载模型
   downloadOnStartup: true
-  # HF token for gated models
+  # 受限模型的 HF Token。建议通过 secret/envFrom 注入。
   hfToken: ""
-  # Reasoning parser for reasoning-capable models
+  # 推理模型解析器，例如 deepseek_r1 / qwen3
   reasoningParser: ""
 
-# Engine configuration
 engine:
-  # Port for OpenAI-compatible API
+  # OpenAI 兼容 API 端口
   port: 8000
-  # Extra engine arguments
-  extraArgs: ""
-  # Max model length
+  # 最大上下文长度
   maxModelLen: 8192
-  # Embedding task
+  # embedding 模式下的任务类型：embed / rank
   embeddingTask: embed
-  # Pooling function for embedding models
+  # embedding 模式下的池化函数
   poolerType: last
-  # Tensor parallelism (for multi-GPU)
+  # 张量并行卡数
   tensorParallelSize: 1
-  # Pipeline parallelism (for multi-node)
+  # 流水并行阶段数
   pipelineParallelSize: 1
-  # GPU memory fraction per GPU (0.0-1.0)
+  # 单卡显存利用率
   gpuMemoryUtilization: 0.90
-  # Enable prefix caching
+  # 每批最大 token 数，0 表示不显式下发
+  maxNumBatchedTokens: 0
+  # 最大并发序列数，0 表示不显式下发
+  maxNumSeqs: 0
+  # dtype，例如 float16 / bfloat16；为空则使用镜像默认值
+  dtype: ""
+  # kv cache dtype；为空则使用默认值
+  kvCacheDType: ""
+  # 是否开启 prefix caching
   enablePrefixCaching: false
-  # Enable chunked prefill
+  # 是否开启 chunked prefill
   enableChunkedPrefill: false
+  # 是否强制 eager mode
+  enforceEager: false
+  # 追加到 `vllm serve` 后的额外参数，数组形式，避免 shell 拼接歧义
+  extraArgs: []
 
-# Multi-node / distributed inference
 distributed:
+  # 是否进入多节点部署预留模式。当前 chart 只保留参数位，不自动生成额外 worker 资源。
   enabled: false
-  # Init container image for NCCL setup
   initImage: "nccl:latest"
-  # Node list for multi-node (comma-separated hostnames)
   nodeList: []
-  # Master address (usually first node)
   masterAddr: ""
-  # Master port
   masterPort: 29500
 
-# Scheduler type
 scheduler:
-  # native, hami (Xiaohongshu), volcano (Huawei)
+  # native / volcano / hami
   type: native
-  # Explicit scheduler name override
+  # 当 type=native 时，可手动覆盖 schedulerName
   name: ""
-  # Scheduler-specific annotations
+  # 统一透传到 Pod annotations 的附加注解
   annotations: {}
+  # 通过 UUID 控制 GPU 卡池。
+  gpuPool:
+    # 只允许使用的 GPU UUID 列表
+    includeUUIDs: []
+    # 排除的 GPU UUID 列表
+    excludeUUIDs: []
   volcano:
     queueName: ""
-    groupMinMember: 0
     createPodGroup: false
+    # 0 表示默认跟随 replicaCount
+    groupMinMember: 0
     minResources: {}
   hami:
+    # spread / binpack
     nodeSchedulerPolicy: ""
+    # spread / binpack
     gpuSchedulerPolicy: ""
+    # 共享显存百分比。为空时不下发 nvidia.com/gpumem-percentage
     gpuSharePercent: ""
 
-# GPU hardware type
+# 仅用于自动补 GPU toleration，不会替代资源 limits
 gpuType: nvidia
-# Supported: nvidia, ascend, amd, intel, metal
+# 可选：nvidia / amd / ascend / intel
 
-# Resource limits
 resources:
   limits:
     nvidia.com/gpu: "1"
-    memory: "16Gi"
     cpu: "4"
+    memory: "16Gi"
   requests:
     cpu: "2"
     memory: "8Gi"
 
-# Node selector
-nodeSelector: {}
-tolerations: []
-affinity: {}
-
-# Service configuration
 service:
+  enabled: true
   type: ClusterIP
   port: 8000
   annotations: {}
 
-# Ingress configuration
 ingress:
   enabled: false
   className: ""
@@ -114,28 +136,27 @@ ingress:
           pathType: Prefix
   tls: []
 
-# Health checks
-livenessProbe:
-  httpGet:
-    path: /health
-    port: 8000
-  initialDelaySeconds: 30
-  periodSeconds: 10
-readinessProbe:
-  httpGet:
-    path: /health
-    port: 8000
-  initialDelaySeconds: 10
-  periodSeconds: 5
-startupProbe:
-  httpGet:
-    path: /health
-    port: 8000
-  initialDelaySeconds: 30
-  periodSeconds: 30
-  failureThreshold: 30
+probes:
+  liveness:
+    httpGet:
+      path: /health
+      port: 8000
+    initialDelaySeconds: 30
+    periodSeconds: 10
+  readiness:
+    httpGet:
+      path: /health
+      port: 8000
+    initialDelaySeconds: 10
+    periodSeconds: 5
+  startup:
+    httpGet:
+      path: /health
+      port: 8000
+    initialDelaySeconds: 30
+    periodSeconds: 30
+    failureThreshold: 30
 
-# Autoscaling
 autoscaling:
   enabled: false
   minReplicas: 1
@@ -143,76 +164,61 @@ autoscaling:
   targetCPUUtilizationPercentage: 80
   targetMemoryUtilizationPercentage: 80
 
-# Persistence (for model cache)
+proxy:
+  enabled: false
+  httpProxy: ""
+  httpsProxy: ""
+  noProxy: ""
+
 persistence:
   enabled: false
   storageClass: ""
   size: 50Gi
   mountPath: /root/.cache/huggingface
 
-# Pod annotations
 podAnnotations: {}
 podLabels: {}
+annotations: {}
 
-# Extra environment
+# 额外环境变量，直接拼到容器 env 里
 extraEnv: []
+# 额外 envFrom
 envFrom: []
+
+# 完全覆盖容器 command/args。留空时 chart 自动生成 `vllm serve`
 command: []
 args: []
 
-# Runtime and disruption controls
 runtimeClassName: ""
 priorityClassName: ""
 terminationGracePeriodSeconds: 120
 topologySpreadConstraints: []
+nodeSelector: {}
+tolerations: []
+affinity: {}
 
-# Shared memory for NCCL / tensor parallelism
 shm:
   enabled: true
   sizeLimit: 1Gi
 
-# Security context
 securityContext:
   runAsUser: 0
   runAsGroup: 0
   fsGroup: 0
 
-# Init containers (e.g., model downloader)
 initContainers: []
-
-# Sidecar containers
 sidecars: []
 
-# Service account
 serviceAccount:
   create: true
   name: ""
   annotations: {}
 
-# Pod disruption budget
 podDisruptionBudget:
   enabled: false
   minAvailable: ""
   maxUnavailable: 1
 
-# GPUStack-style model catalog ConfigMap (recommended models + flags)
-# Reference: GPUStack model-catalog.yaml (87 model sets)
-modelCatalog:
-  enabled: false
-  # Selected preset: auto-fills recommended engine flags when model matches
-  # Options:
-  #   qwen2.5-7b-chat    - Qwen2.5-7B-Instruct
-  #   qwen2.5-72b-chat   - Qwen2.5-72B-Instruct
-  #   llama-70b-chat      - Llama-3.1-70B-Instruct
-  #   deepseek-r1-7b     - DeepSeek-R1-Distill-Qwen-7B (with reasoningParser)
-  #   bge-m3-embed        - BAAI/bge-m3 (embedding task)
-  #   qwen2vl-7b-vision   - Qwen/Qwen2-VL-7B-Instruct
-  # When set, chart will auto-configure engine flags from catalog
-  selectedPreset: ""
-  # Includes: chat-models.yaml, embedding-models.yaml, vision-models.yaml
-  # Use: kubectl get configmap -l app.kubernetes.io/component=model-catalog
-
-# Prometheus Operator integration
 metrics:
   enabled: true
   path: /metrics
@@ -223,6 +229,33 @@ metrics:
     labels: {}
     annotations: {}
 
-# Volumes and volume mounts
+modelCatalog:
+  enabled: false
+  # 可选：qwen2.5-7b-chat / qwen2.5-72b-chat / llama-70b-chat / deepseek-r1-7b / bge-m3-embed / qwen2vl-7b-vision
+  selectedPreset: ""
+
 volumes: []
 volumeMounts: []
+
+kthena:
+  # 仅在 workload.mode=kthena-modelbooster 时生效
+  apiVersion: workload.serving.volcano.sh/v1alpha1
+  kind: ModelBooster
+  backend:
+    name: backend1
+    type: vLLM
+    # 为空时按 hf://<model.name> 自动生成
+    modelURI: ""
+    cacheURI: hostpath://tmp/cache
+    minReplicas: 1
+    maxReplicas: 1
+    env: []
+    server:
+      # 为空时复用 image.repository:image.tag
+      image: ""
+      replicas: 1
+      pods: 1
+      # 额外透传给 Kthena server worker 的 config
+      config: {}
+      # 为空时复用 chart 的 resources
+      resources: {}

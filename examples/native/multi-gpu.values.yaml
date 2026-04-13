@@ -1,0 +1,20 @@
+model:
+  name: Qwen/Qwen2.5-72B-Instruct
+  type: chat
+
+engine:
+  tensorParallelSize: 4
+  pipelineParallelSize: 1
+  maxModelLen: 8192
+  gpuMemoryUtilization: 0.85
+
+resources:
+  limits:
+    nvidia.com/gpu: "4"
+    cpu: "16"
+    memory: 64Gi
+  requests:
+    cpu: "8"
+    memory: 32Gi
+
+runtimeClassName: nvidia

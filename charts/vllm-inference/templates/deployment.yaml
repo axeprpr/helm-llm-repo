@@ -1,3 +1,4 @@
+{{- if eq (.Values.workload.mode | default "deployment") "deployment" }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -47,142 +48,170 @@ spec:
       {{- end }}
       securityContext:
         {{- toYaml .Values.securityContext | nindent 8 }}
-      {{- if .Values.initContainers }}
+      {{- with .Values.initContainers }}
       initContainers:
-        {{- range $i, $c := .Values.initContainers }}
-        - name: {{ $c.name }}
-          image: {{ $c.image }}
-          command: {{ $c.command }}
-          args: {{ $c.args }}
+        {{- range . }}
+        - name: {{ .name }}
+          image: {{ .image }}
+          {{- with .command }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .env }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .envFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .volumeMounts }}
           volumeMounts:
-            {{- toYaml $c.volumeMounts | nindent 12 }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .resources }}
           resources:
-            {{- toYaml $c.resources | nindent 12 }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
         {{- end }}
       {{- end }}
       containers:
-      - name: vllm
-        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-        imagePullPolicy: {{ .Values.image.pullPolicy }}
-        {{- if .Values.command }}
-        command:
-          {{- toYaml .Values.command | nindent 10 }}
-        {{- end }}
-        {{- if .Values.args }}
-        args:
-          {{- toYaml .Values.args | nindent 10 }}
-        {{- else if not .Values.command }}
-        {{- if .Values.model.downloadOnStartup }}
-        command:
-          - /bin/bash
-          - -c
-          - |
-            {{- if .Values.distributed.enabled }}
-            # Multi-node setup
-            apt-get update && apt-get install -y ssh-client
-            {{- end }}
-            vllm serve {{ include "vllm-inference.engineArgs" . | indent 12 }}
-        {{- else }}
-        command:
-          - /bin/bash
-          - -c
-          - |
-            vllm serve {{ include "vllm-inference.engineArgs" . | indent 12 }}
-        {{- end }}
-        {{- end }}
-        ports:
-        - name: http
-          containerPort: {{ .Values.engine.port }}
-          protocol: TCP
-        env:
-        - name: HF_HOME
-          value: {{ .Values.persistence.mountPath | quote }}
-        - name: MODEL_NAME
-          value: {{ default (include "vllm-inference.defaultModel" .) .Values.model.name | quote }}
-        {{- with .Values.envFrom }}
-        envFrom:
-          {{- toYaml . | nindent 10 }}
-        {{- end }}
-        {{- with .Values.extraEnv }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-        {{- if .Values.distributed.enabled }}
-        - name: VLLM_RANK
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.annotations['vllm.ai/rank']
-        - name: VLLM_TENSOR_PARALLEL_SIZE
-          value: {{ .Values.engine.tensorParallelSize | quote }}
-        - name: VLLM_PIPELINE_PARALLEL_SIZE
-          value: {{ .Values.engine.pipelineParallelSize | quote }}
-        {{- end }}
-        livenessProbe:
-          {{- toYaml .Values.livenessProbe | nindent 10 }}
-        readinessProbe:
-          {{- toYaml .Values.readinessProbe | nindent 10 }}
-        {{- if .Values.startupProbe }}
-        startupProbe:
-          {{- toYaml .Values.startupProbe | nindent 10 }}
-        {{- end }}
-        resources:
-          {{- $resources := deepCopy .Values.resources }}
-          {{- if and (eq .Values.scheduler.type "hami") .Values.scheduler.hami.gpuSharePercent }}
-          {{- $limits := get $resources "limits" | default dict }}
-          {{- $_ := set $limits "nvidia.com/gpumem-percentage" (toString .Values.scheduler.hami.gpuSharePercent) }}
-          {{- $_ := set $resources "limits" $limits }}
+        - name: vllm
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- if .Values.command }}
+          command:
+            {{- toYaml .Values.command | nindent 12 }}
           {{- end }}
-          {{- toYaml $resources | nindent 10 }}
-        volumeMounts:
+          {{- if .Values.args }}
+          args:
+            {{- toYaml .Values.args | nindent 12 }}
+          {{- else if not .Values.command }}
+          command:
+            - /bin/bash
+            - -c
+            - |
+              vllm serve {{ include "vllm-inference.engineArgs" . }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.engine.port }}
+              protocol: TCP
+          env:
+            - name: HF_HOME
+              value: {{ .Values.persistence.mountPath | quote }}
+            - name: MODEL_NAME
+              value: {{ include "vllm-inference.modelName" . | quote }}
+            {{- if .Values.proxy.enabled }}
+            {{- with .Values.proxy.httpProxy }}
+            - name: http_proxy
+              value: {{ . | quote }}
+            - name: HTTP_PROXY
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.proxy.httpsProxy }}
+            - name: https_proxy
+              value: {{ . | quote }}
+            - name: HTTPS_PROXY
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.proxy.noProxy }}
+            - name: no_proxy
+              value: {{ . | quote }}
+            - name: NO_PROXY
+              value: {{ . | quote }}
+            {{- end }}
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- if .Values.distributed.enabled }}
+            - name: VLLM_RANK
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.annotations['vllm.ai/rank']
+            - name: VLLM_TENSOR_PARALLEL_SIZE
+              value: {{ .Values.engine.tensorParallelSize | quote }}
+            - name: VLLM_PIPELINE_PARALLEL_SIZE
+              value: {{ .Values.engine.pipelineParallelSize | quote }}
+            {{- end }}
+          {{- with .Values.envFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          livenessProbe:
+            {{- toYaml .Values.probes.liveness | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.probes.readiness | nindent 12 }}
+          {{- with .Values.probes.startup }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- $resources := deepCopy .Values.resources }}
+            {{- if and (eq .Values.scheduler.type "hami") .Values.scheduler.hami.gpuSharePercent }}
+            {{- $limits := get $resources "limits" | default dict }}
+            {{- $_ := set $limits "nvidia.com/gpumem-percentage" (toString .Values.scheduler.hami.gpuSharePercent) }}
+            {{- $_ := set $resources "limits" $limits }}
+            {{- end }}
+            {{- toYaml $resources | nindent 12 }}
+          volumeMounts:
+            {{- if .Values.persistence.enabled }}
+            - name: model-cache
+              mountPath: {{ .Values.persistence.mountPath }}
+            {{- end }}
+            {{- if .Values.shm.enabled }}
+            - name: shm
+              mountPath: /dev/shm
+            {{- end }}
+            {{- with .Values.volumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      {{- with .Values.sidecars }}
+        {{- range . }}
+        - name: {{ .name }}
+          image: {{ .image }}
+          {{- with .command }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .env }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .volumeMounts }}
+          volumeMounts:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+      volumes:
         {{- if .Values.persistence.enabled }}
         - name: model-cache
-          mountPath: {{ .Values.persistence.mountPath }}
+          persistentVolumeClaim:
+            claimName: {{ include "vllm-inference.fullname" . }}-model-cache
         {{- end }}
         {{- if .Values.shm.enabled }}
         - name: shm
-          mountPath: /dev/shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ .Values.shm.sizeLimit }}
         {{- end }}
-        {{- if .Values.volumeMounts }}
-        {{- toYaml .Values.volumeMounts | nindent 8 }}
+        {{- with .Values.volumes }}
+        {{- toYaml . | nindent 8 }}
         {{- end }}
-      {{- if .Values.sidecars }}
-      {{- range .Values.sidecars }}
-      - name: {{ .name }}
-        image: {{ .image }}
-        {{- if .command }}
-        command: {{ .command }}
-        {{- end }}
-        {{- if .args }}
-        args: {{ .args }}
-        {{- end }}
-        {{- if .env }}
-        env:
-          {{- toYaml .env | nindent 8 }}
-        {{- end }}
-        {{- if .volumeMounts }}
-        volumeMounts:
-          {{- toYaml .volumeMounts | nindent 8 }}
-        {{- end }}
-        {{- if .resources }}
-        resources:
-          {{- toYaml .resources | nindent 8 }}
-        {{- end }}
-      {{- end }}
-      {{- end }}
-      volumes:
-      {{- if .Values.persistence.enabled }}
-      - name: model-cache
-        persistentVolumeClaim:
-          claimName: {{ include "vllm-inference.fullname" . }}-model-cache
-      {{- end }}
-      {{- if .Values.shm.enabled }}
-      - name: shm
-        emptyDir:
-          medium: Memory
-          sizeLimit: {{ .Values.shm.sizeLimit }}
-      {{- end }}
-      {{- if .Values.volumes }}
-      {{- toYaml .Values.volumes | nindent 6 }}
-      {{- end }}
       {{- with .Values.topologySpreadConstraints }}
       topologySpreadConstraints:
         {{- toYaml . | nindent 8 }}
@@ -216,20 +245,21 @@ spec:
   minReplicas: {{ .Values.autoscaling.minReplicas }}
   maxReplicas: {{ .Values.autoscaling.maxReplicas }}
   metrics:
-  {{- if .Values.autoscaling.targetCPUUtilizationPercentage }}
-  - type: Resource
-    resource:
-      name: cpu
-      target:
-        type: Utilization
-        averageUtilization: {{ .Values.autoscaling.targetCPUUtilizationPercentage }}
-  {{- end }}
-  {{- if .Values.autoscaling.targetMemoryUtilizationPercentage }}
-  - type: Resource
-    resource:
-      name: memory
-      target:
-        type: Utilization
-        averageUtilization: {{ .Values.autoscaling.targetMemoryUtilizationPercentage }}
-  {{- end }}
+    {{- if .Values.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+{{- end }}
 {{- end }}

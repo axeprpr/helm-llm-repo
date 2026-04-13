@@ -1,0 +1,29 @@
+image:
+  tag: v0.17.1-x86_64
+
+model:
+  name: Qwen/Qwen2.5-0.5B-Instruct
+
+scheduler:
+  type: hami
+  gpuPool:
+    includeUUIDs:
+      - GPU-6bdf3c51-5f2e-6b1b-a4c8-21d6a0904f1b
+  hami:
+    gpuSchedulerPolicy: spread
+    gpuSharePercent: 90
+
+engine:
+  maxModelLen: 2048
+  gpuMemoryUtilization: 0.6
+
+resources:
+  limits:
+    nvidia.com/gpu: "1"
+    cpu: "8"
+    memory: 24Gi
+  requests:
+    cpu: "4"
+    memory: 12Gi
+
+runtimeClassName: nvidia

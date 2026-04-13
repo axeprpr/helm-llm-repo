@@ -1,17 +1,16 @@
 apiVersion: v2
 name: vllm-inference
-description: vLLM high-throughput LLM inference engine Helm chart
+description: Single vLLM inference chart with native, Volcano, HAMi, and Kthena modes
 type: application
-version: 0.1.0
-appVersion: "0.18.0"
+version: 0.2.0
+appVersion: "0.17.1"
 keywords:
   - llm
   - vllm
   - inference
-  - gpu
-  - nvidia
-  - ascend
-  - sglang
+  - volcano
+  - hami
+  - kthena
 home: https://github.com/axeprpr/helm-llm-repo
 sources:
   - https://github.com/axeprpr/helm-llm-repo
