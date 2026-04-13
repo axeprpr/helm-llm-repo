@@ -3,9 +3,9 @@ entries:
   hami-scheduler:
   - apiVersion: v2
     appVersion: 2.7.1
-    created: "2026-04-05T02:41:00.307967366Z"
+    created: "2026-04-13T05:43:43.970210404Z"
     description: Skeleton chart placeholder for HAMi scheduler installation docs
-    digest: a12cc17dffed21f0971a48baa844d24bd92c3efcd3e39f39dc6109f50967291a
+    digest: 9295b473d8f70e0afdaff86b6bb218ebd6576bb2eba13e65642f3342afbf7d69
     home: https://github.com/axeprpr/helm-llm-repo
     keywords:
     - hami
@@ -25,9 +25,9 @@ entries:
   llamacpp-inference:
   - apiVersion: v2
     appVersion: b8580
-    created: "2026-04-05T02:41:00.308705202Z"
+    created: "2026-04-13T05:43:43.971002611Z"
     description: llama.cpp high-throughput LLM inference engine Helm chart
-    digest: a1e5e6f20efb21db7f41c7109a499eb9e46add98b7697f29b69c21da1cec6516
+    digest: 4b1f99fa56b0bf4e0dc1bda770fc5fe486053e00576dbb94b2f23754abc30326
     home: https://github.com/axeprpr/helm-llm-repo
     keywords:
     - llm
@@ -50,9 +50,9 @@ entries:
   sglang-inference:
   - apiVersion: v2
     appVersion: v0.5.9
-    created: "2026-04-05T02:41:00.309346137Z"
+    created: "2026-04-13T05:43:43.971669814Z"
     description: SGLang high-throughput LLM inference engine Helm chart
-    digest: d52f551790d848ce818d541494b701e5b5b2c6c67ceadc84ae2046b82b929ab8
+    digest: 3e04e23b225cdfcddeafc6099cfcbfcaed583ad709cd7ae832fe62f7eab882ba
     home: https://github.com/axeprpr/helm-llm-repo
     keywords:
     - llm
@@ -75,9 +75,9 @@ entries:
   vllm-inference:
   - apiVersion: v2
     appVersion: 0.18.0
-    created: "2026-04-05T02:41:00.310126563Z"
+    created: "2026-04-13T05:43:43.972390268Z"
     description: vLLM high-throughput LLM inference engine Helm chart
-    digest: 04f7da243e8fa194a2a298b411d900514ae2ef0899fa8bf655a06876f4b0cbc8
+    digest: 76dbf770c704c18091394d2d967be7eb4b2625534d925b07dab48ddb840d0e12
     home: https://github.com/axeprpr/helm-llm-repo
     keywords:
     - llm
@@ -100,9 +100,9 @@ entries:
   volcano-scheduler:
   - apiVersion: v2
     appVersion: 1.10.0
-    created: "2026-04-05T02:41:00.31030756Z"
+    created: "2026-04-13T05:43:43.972603375Z"
     description: Skeleton chart placeholder for Volcano scheduler installation docs
-    digest: e22cbc129a9f1ed085a4e2d2c363748567a7bffe7fbfb6c87da700497418bb3f
+    digest: 5e1cd853efb520191bbf52178803a2d4f07cf122fb6c76e1c269e9eab322c4fb
     home: https://github.com/axeprpr/helm-llm-repo
     keywords:
     - volcano
@@ -119,4 +119,4 @@ entries:
     urls:
     - https://axeprpr.github.io/helm-llm-repo/volcano-scheduler-0.1.0.tgz
     version: 0.1.0
-generated: "2026-04-05T02:41:00.307568663Z"
+generated: "2026-04-13T05:43:43.969863277Z"
