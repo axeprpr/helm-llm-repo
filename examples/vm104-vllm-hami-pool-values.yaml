@@ -1,0 +1,39 @@
+image:
+  tag: v0.17.1-x86_64
+
+model:
+  name: Qwen/Qwen2.5-0.5B-Instruct
+
+scheduler:
+  type: hami
+  hami:
+    gpuSchedulerPolicy: spread
+    gpuSharePercent: 90
+  annotations:
+    nvidia.com/nouse-gpuuuid: GPU-24d05b69-d323-aa55-df9b-35f82b70fd96,GPU-748a26e6-6618-0615-dd87-8fd2017ab59d,GPU-c7ea6d5e-5553-a949-9981-1cb20a97ccd4,GPU-272a5e2d-46c8-c306-38dd-a76928279f9b,GPU-b01c00b3-2da6-0a4c-cc0f-ec5065746fc1,GPU-043d3a28-f108-fc7b-6e70-cb84285332f9
+
+gpuType: nvidia
+runtimeClassName: nvidia
+
+extraEnv:
+  - name: http_proxy
+    value: http://192.168.3.42:7890
+  - name: https_proxy
+    value: http://192.168.3.42:7890
+  - name: HF_HUB_DISABLE_TELEMETRY
+    value: "1"
+
+resources:
+  limits:
+    nvidia.com/gpu: "1"
+    memory: 24Gi
+    cpu: "8"
+  requests:
+    nvidia.com/gpu: "1"
+    memory: 12Gi
+    cpu: "4"
+
+engine:
+  tensorParallelSize: 1
+  maxModelLen: 2048
+  gpuMemoryUtilization: 0.6

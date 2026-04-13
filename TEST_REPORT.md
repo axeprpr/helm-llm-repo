@@ -1248,3 +1248,136 @@ Operational notes:
 - node-side direct pulls to `ghcr.io` and `public.ecr.aws` were not reliable in this environment; proxy-assisted pre-pull plus `ctr -n k8s.io images import` was required
 - this validation proves Kthena control plane and the basic ModelBooster control chain are live
 - this validation does **not** yet prove a stable final serving pod for long-running production use
+
+---
+
+## 2026-04-12 ENV-27 / VM104 vLLM + HAMi smoke
+
+What was verified:
+
+- the chart can render and deploy `scheduler.type=hami`
+- the HAMi registration chain on this cluster can be repaired to a working state
+- `vLLM` can be scheduled, bound and started under HAMi on `VM104`
+- a second smoke run can pass if a free GPU UUID is pinned and runtime parameters are reduced
+
+Real evidence collected:
+
+- `hami-scheduler` is Running
+- `hami-device-plugin` was repaired and reached `2/2 Running`
+- node registration recovered after fixing:
+  - `ClusterRoleBinding hami-device-plugin-node`
+  - `ClusterRole hami-device-plugin`
+  - `runtimeClassName: nvidia`
+- the new `vllm-hami-smoke` pod was scheduled to `vm104`
+- pod annotations contained:
+  - `hami.io/bind-phase=success`
+  - `hami.io/vgpu-node=vm104`
+  - `hami.io/vgpu-devices-allocated=GPU-...`
+- container environment contained:
+  - `NVIDIA_VISIBLE_DEVICES=GPU-...`
+  - `CUDA_DEVICE_MEMORY_LIMIT_0=88452m`
+- vLLM logs reached engine initialization and then failed with:
+  - `torch.OutOfMemoryError: CUDA out of memory`
+- the failing allocation was placed on a GPU already holding about `42 GiB` from an existing Volcano workload
+- a second smoke run used:
+  - `hami.io/gpu-scheduler-policy=spread`
+  - `nvidia.com/use-gpuuuid=GPU-6bdf3c51-3f69-1053-a1f3-7752226ef945`
+  - `maxModelLen=2048`
+  - `gpuMemoryUtilization=0.6`
+- that second run reached:
+  - `deployment successfully rolled out`
+  - `/v1/models` returned the model list
+  - `/v1/chat/completions` returned a real completion through `kubectl port-forward`
+
+Working asset:
+
+- `examples/vm104-vllm-hami-smoke-values.yaml`
+
+Operational conclusion:
+
+- on `ENV-27 / VM104`, the current `vLLM + HAMi` path is no longer blocked at scheduler admission
+- HAMi and Volcano can coexist at cluster level; the live Volcano smoke service stayed healthy during HAMi testing
+- the remaining gap is automatic GPU selection under mixed HAMI + Volcano pressure
+- the current passing path depends on pinning a free GPU UUID and using smaller runtime settings
+
+## 2026-04-12 ENV-27 / VM104 HAMi automatic GPU selection experiment
+
+What was verified:
+
+- HAMi `gpuSchedulerPolicy=spread` and `gpuSchedulerPolicy=binpack` were both exercised with minimal `pause` Pods
+- the goal was to remove model startup cost and observe pure GPU selection behavior
+
+Real evidence collected:
+
+- live GPU memory snapshot at test time:
+  - GPU 1: about `1477 MiB`
+  - GPU 6: about `30353 MiB`
+  - GPU 0/2/4/5/7: about `42169 MiB`
+  - GPU 3: about `42555 MiB`
+- `hami-select-spread` was bound to:
+  - `GPU-043d3a28-f108-fc7b-6e70-cb84285332f9` (GPU 7)
+- `hami-select-binpack` was also bound to:
+  - `GPU-043d3a28-f108-fc7b-6e70-cb84285332f9` (GPU 7)
+- node annotation `hami.io/node-nvidia-register` exposed nearly identical resource tuples for every GPU and did not reflect the real `nvidia-smi` usage spread
+
+Operational conclusion:
+
+- on this mixed `HAMi + Volcano` cluster, automatic GPU selection is not yet trustworthy
+- `spread` did not move the Pod to the lightest-used GPU in this experiment
+- the current reliable way to keep `vLLM + HAMi` healthy is still explicit `nvidia.com/use-gpuuuid`
+
+## 2026-04-12 ENV-27 / VM104 HAMi spread/binpack accounting experiment
+
+What was verified:
+
+- `spread` and `binpack` were tested again, but this time with three sequential minimal Pods each
+- the goal was to see whether the policies work inside HAMi's own accounting domain
+
+Real evidence collected:
+
+- `spread` allocations:
+  - Pod 1 -> GPU 3
+  - Pod 2 -> GPU 2
+  - Pod 3 -> GPU 0
+- `binpack` allocations:
+  - Pod 1 -> GPU 0
+  - Pod 2 -> GPU 0
+  - Pod 3 -> GPU 0
+
+Operational conclusion:
+
+- `spread/binpack` logic itself is active
+- the earlier mismatch is not “policy disabled”
+- the real problem is that, under mixed `HAMi + Volcano` load, HAMi's scheduling input does not match the live `nvidia-smi` pressure picture closely enough
+
+## 2026-04-12 ENV-27 / VM104 HAMi card-pool isolation experiment
+
+What was verified:
+
+- `vLLM + HAMi` was tested without `nvidia.com/use-gpuuuid`
+- Volcano-occupied GPUs were excluded as a pool through `nvidia.com/nouse-gpuuuid`
+- HAMI was left to choose automatically inside the remaining pool
+
+Real evidence collected:
+
+- `vllm-hami-pool` annotations contained:
+  - `hami.io/gpu-scheduler-policy=spread`
+  - `nvidia.com/nouse-gpuuuid=<Volcano pool UUID list>`
+- the workload was automatically bound to:
+  - `GPU-30636a13-9780-0574-1627-3302f90a73c9` (GPU 1)
+- engine startup completed:
+  - weights loaded
+  - `torch.compile` completed
+  - KV cache initialized
+  - API server started
+- real `kubectl port-forward` verification succeeded:
+  - `/v1/models` returned the model list
+  - `/v1/chat/completions` returned a real completion
+
+Operational conclusion:
+
+- card-pool isolation is a workable strategy on `ENV-27 / VM104`
+- the practical guidance is:
+  - do not trust default global automatic selection under mixed load
+  - either pin a specific UUID
+  - or isolate HAMi and Volcano into separate GPU pools

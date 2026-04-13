@@ -26,6 +26,8 @@
 | HAMi 模板支持 | 已支持 | 三个推理 Chart 都支持 `scheduler.type=hami` |
 | HAMi 高级策略渲染 | 部分支持 | `vllm-inference` 已显式渲染 `hami.io/node-scheduler-policy`、`hami.io/gpu-scheduler-policy` 和 `nvidia.com/gpumem-percentage`；其他两个 Chart 仍主要依赖通用 `scheduler.annotations.*` |
 | HAMi 真实运行证据 | 部分完成 | `ENV-42` 已验证单 Pod HAMi 调度与 GPU UUID 分配；多 Pod 同卡 vGPU 共享证据仍缺失 |
+| `ENV-27` vLLM + HAMi smoke | 有条件通过 | 在 `VM104` 上修复 `hami-device-plugin`、节点注册和 Pod 分配链后，`vLLM` 已完成真实调度、GPU UUID 绑定、`/v1/models` 和 `/v1/chat/completions` 验证；当前通过路径要求显式绑定空闲 GPU UUID，并把 `maxModelLen/gpuMemoryUtilization` 收小 |
+| `ENV-27` vLLM + HAMi card-pool smoke | 已完成 | `nvidia.com/nouse-gpuuuid` 排除 Volcano 使用中的 GPU 卡池，再配合 `gpuSharePercent=90`、`spread` 和更保守的运行参数，已完成真实 `/v1/chat/completions` 验证 |
 | `ENV-27` vLLM smoke | 已完成 | `runtimeClassName: nvidia` + `v0.17.1-x86_64` 已在 `VM104` 上完成真实 completion 验证 |
 | `ENV-27` vLLM + Volcano smoke | 已完成 | `scheduler.type=volcano` + 显式 `PodGroup` 已在 `VM104` 上完成真实 completion 验证；chart 已修复 `createPodGroup` 时缺少 `scheduling.k8s.io/group-name` 的问题 |
 | `ENV-27` Volcano custom queue | 已完成 | `smoke-queue` 上已完成真实 completion 验证，`PodGroup.spec.queue` 与 `Scheduled from volcano` 证据已采集 |
@@ -47,8 +49,11 @@
 - `TEST_PROCESS.md`：`ENV-27` 补测过程与本次沙箱阻断记录
 - `TEST_CASES.md`：当前保留的真实 smoke / regression 用例
 - `VOLCANO_TEST_GUIDE.zh-CN.md`：Volcano 官方能力覆盖矩阵与分阶段测试指南
+- `HAMI_TEST_GUIDE.zh-CN.md`：HAMi 当前验证状态、vLLM 适配问题和与 Volcano 的边界说明
 - `KTHENA_TEST_GUIDE.zh-CN.md`：Kthena 官方能力定位、真实安装记录、已验证链路与当前阻塞点
 - `examples/vm104-vllm-smoke-values.yaml`：`ENV-27` 上验证通过的 vLLM smoke values
+- `examples/vm104-vllm-hami-smoke-values.yaml`：`ENV-27` 上验证通过的 `vLLM + HAMi` smoke values（显式绑定空闲 GPU UUID）
+- `examples/vm104-vllm-hami-pool-values.yaml`：`ENV-27` 上验证通过的 `vLLM + HAMi` 卡池隔离 values（排除 Volcano 卡池）
 - `examples/vm104-vllm-volcano-smoke-values.yaml`：`ENV-27` 上验证通过的 vLLM + Volcano smoke values
 - `examples/vm104-vllm-volcano-custom-queue-values.yaml`：`ENV-27` 上验证通过的 vLLM + Volcano custom queue values
 - `examples/vm104-vllm-volcano-auto-pg-values.yaml`：`ENV-27` 上验证通过的 vLLM + Volcano 自动 PodGroup values

@@ -946,3 +946,181 @@ kubectl -n kthena-demo describe pod <pod-name>
 
 - 这条用例当前已经拿到 downloader 和 runtime 的正向证据
 - 当前还没有把 `engine` 长时间稳定收敛到完整 Ready，因此不把它标记为“完整 serving 通过”
+
+## ENV-27 / VM104 HAMi
+
+### 用例 21：vLLM + HAMi 运行时 Smoke
+
+测试内容：
+
+- 用 `scheduler.type=hami` 部署 `charts/vllm-inference`
+- 观察是否能被 `hami-scheduler` 正常接住
+- 记录是否能完成 GPU UUID 分配并进入真实引擎启动
+- 记录最终失败点是在调度链还是运行时
+
+测试场景：
+
+- 两节点集群：`vm104 + worker-1`
+- 当前 GPU 节点为 `vm104`
+- 使用：
+  - `runtimeClassName: nvidia`
+  - `Qwen/Qwen2.5-0.5B-Instruct`
+  - `v0.17.1-x86_64`
+- 用于验证当前环境下 `vLLM + HAMi` 的真实调度和运行时状态
+
+执行命令：
+
+```bash
+helm upgrade --install vllm-hami-smoke ./charts/vllm-inference \
+  -n llm-test --create-namespace \
+  -f ./examples/vm104-vllm-hami-smoke-values.yaml
+```
+
+检查项：
+
+```bash
+kubectl -n llm-test get pod -l app.kubernetes.io/instance=vllm-hami-smoke -o wide
+kubectl -n llm-test describe pod -l app.kubernetes.io/instance=vllm-hami-smoke
+kubectl -n hami-system get pod -o wide
+kubectl -n default logs <hami-scheduler-pod> -c kube-scheduler --since=10m
+kubectl -n default logs <hami-scheduler-pod> -c vgpu-scheduler-extender --since=10m
+```
+
+通过标准：
+
+- `hami-device-plugin` 正常 Running
+- pod 被 `hami-scheduler` 成功调度到 GPU 节点
+- Pod 注解出现 `hami.io/bind-phase=success`
+- workload 能进入容器启动阶段
+- 若失败，必须明确失败点是在调度链还是运行时
+
+当前结果：
+
+- **部分通过**
+- 默认 HAMI smoke：
+  - `hami-device-plugin` 正常 Running
+  - 新 pod 被调度到 `vm104`
+  - Pod 注解显示 GPU UUID 分配成功
+  - 容器最终在 `KV cache` 初始化时触发 `torch.OutOfMemoryError`
+- 绑定空闲 GPU UUID 的 smoke：
+  - Pod `1/1 Running`
+  - `/v1/models` 正常
+  - `/v1/chat/completions` 返回真实 completion
+
+场景说明：
+
+- 这条用例已经证明 HAMi 调度链、分配链和容器启动链可用
+- 当前通过路径要求显式绑定空闲 GPU UUID，并使用更保守的 `maxModelLen/gpuMemoryUtilization`
+- 还不能把它写成“自动选卡下稳定通过”
+
+### 用例 22：HAMi 自动选卡策略 Smoke
+
+测试内容：
+
+- 不运行模型，只用最小化 `pause` Pod 验证 HAMI 的纯选卡行为
+- 对比：
+  - `hami.io/gpu-scheduler-policy=spread`
+  - `hami.io/gpu-scheduler-policy=binpack`
+- 观察最终绑定的 GPU UUID 是否会避开真实重载卡
+
+测试场景：
+
+- 两节点集群：`vm104 + worker-1`
+- GPU 节点：`vm104`
+- Pod 规格：
+  - `registry.k8s.io/pause:3.10`
+  - `runtimeClassName: nvidia`
+  - `schedulerName: hami-scheduler`
+  - `nvidia.com/gpu=1`
+  - `nvidia.com/gpumem-percentage=10`
+- 同时保留现有 `Volcano` 推理 workload，制造真实混合负载
+
+执行命令：
+
+```bash
+kubectl apply -f hami-select-spread.yaml
+kubectl apply -f hami-select-binpack.yaml
+kubectl -n llm-test get pod hami-select-spread -o jsonpath='{.metadata.annotations}'
+kubectl -n llm-test get pod hami-select-binpack -o jsonpath='{.metadata.annotations}'
+nvidia-smi --query-gpu=index,uuid,memory.used --format=csv,noheader
+```
+
+通过标准：
+
+- `spread` 优先落到更空的 GPU
+- `binpack` 优先落到更重的 GPU
+- 两条策略在混合负载下应表现出可解释的差异
+
+当前结果：
+
+- **未通过**
+- 当前实测里：
+  - `spread` 绑定到了 GPU 7
+  - `binpack` 也绑定到了 GPU 7
+  - 当时 GPU 1 只有约 `1477 MiB`，GPU 7 约 `42169 MiB`
+  - 但在一组只看 HAMI 自己分配行为的 3 Pod 实验里：
+    - `spread` 分散到了 GPU 3 / 2 / 0
+    - `binpack` 连续 3 次都堆到了 GPU 0
+
+场景说明：
+
+- 这条用例说明在当前 `ENV-27 / VM104` 的混合 `HAMI + Volcano` 负载下，HAMI 默认自动选卡不能被当成可靠能力来依赖
+- 同时也说明 `spread/binpack` 本身没有失效，问题更像是“输入账本与真实显存占用不一致”
+
+### 用例 23：vLLM + HAMi 卡池隔离 Smoke
+
+测试内容：
+
+- 不精确 pin 单张 GPU UUID
+- 通过 `nvidia.com/nouse-gpuuuid` 把 Volcano 卡池排除掉
+- 让 HAMI 在剩余卡池里自动选卡
+- 验证 `vLLM` 是否能完成真实 completion
+
+测试场景：
+
+- 两节点集群：`vm104 + worker-1`
+- GPU 节点：`vm104`
+- 使用：
+  - `hami.io/gpu-scheduler-policy=spread`
+  - `scheduler.hami.gpuSharePercent=90`
+  - `nvidia.com/nouse-gpuuuid=<Volcano 卡池 UUID 列表>`
+  - `maxModelLen=2048`
+  - `gpuMemoryUtilization=0.6`
+
+执行命令：
+
+```bash
+helm upgrade --install vllm-hami-pool ./charts/vllm-inference \
+  -n llm-test --create-namespace \
+  -f ./examples/vm104-vllm-hami-pool-values.yaml
+```
+
+检查项：
+
+```bash
+kubectl -n llm-test get pod -l app.kubernetes.io/instance=vllm-hami-pool -o wide
+kubectl -n llm-test get pod -l app.kubernetes.io/instance=vllm-hami-pool -o jsonpath='{.items[0].metadata.annotations}'
+kubectl -n llm-test logs deploy/vllm-hami-pool-vllm-inference
+kubectl -n llm-test port-forward pod/<pod> 18082:8000
+curl http://127.0.0.1:18082/v1/models
+curl -H 'Content-Type: application/json' ...
+```
+
+通过标准：
+
+- Pod 不需要精确 `use-gpuuuid`
+- Pod 能自动落到非 Volcano 卡池里的 GPU
+- `/v1/models` 正常
+- `/v1/chat/completions` 返回真实 completion
+
+当前结果：
+
+- **通过**
+- 当前实测里：
+  - Pod 自动分配到了 GPU 1
+  - `/v1/models` 正常
+  - `/v1/chat/completions` 返回真实 completion
+
+场景说明：
+
+- 这条用例说明在当前 `ENV-27 / VM104` 环境里，“卡池隔离”比“依赖默认全局自动选卡”更可靠

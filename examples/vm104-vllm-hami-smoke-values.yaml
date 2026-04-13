@@ -1,0 +1,38 @@
+image:
+  tag: v0.17.1-x86_64
+
+model:
+  name: Qwen/Qwen2.5-0.5B-Instruct
+
+scheduler:
+  type: hami
+  hami:
+    gpuSchedulerPolicy: spread
+  annotations:
+    nvidia.com/use-gpuuuid: GPU-6bdf3c51-3f69-1053-a1f3-7752226ef945
+
+gpuType: nvidia
+runtimeClassName: nvidia
+
+extraEnv:
+  - name: http_proxy
+    value: http://192.168.3.42:7890
+  - name: https_proxy
+    value: http://192.168.3.42:7890
+  - name: HF_HUB_DISABLE_TELEMETRY
+    value: "1"
+
+resources:
+  limits:
+    nvidia.com/gpu: "1"
+    memory: 24Gi
+    cpu: "8"
+  requests:
+    nvidia.com/gpu: "1"
+    memory: 12Gi
+    cpu: "4"
+
+engine:
+  tensorParallelSize: 1
+  maxModelLen: 2048
+  gpuMemoryUtilization: 0.6
