@@ -1,0 +1,15 @@
+scheduler:
+  type: volcano
+  volcano:
+    queueName: smoke-queue
+    createPodGroup: true
+    groupMinMember: 1
+
+nodeSelector:
+  gpu-pool: volcano
+
+tolerations:
+  - key: gpu-pool
+    operator: Equal
+    value: volcano
+    effect: NoSchedule

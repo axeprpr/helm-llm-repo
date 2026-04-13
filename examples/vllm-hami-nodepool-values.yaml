@@ -1,0 +1,14 @@
+scheduler:
+  type: hami
+  hami:
+    gpuSchedulerPolicy: spread
+    gpuSharePercent: 90
+
+nodeSelector:
+  gpu-pool: hami
+
+tolerations:
+  - key: gpu-pool
+    operator: Equal
+    value: hami
+    effect: NoSchedule

@@ -50,10 +50,13 @@
 - `TEST_CASES.md`：当前保留的真实 smoke / regression 用例
 - `VOLCANO_TEST_GUIDE.zh-CN.md`：Volcano 官方能力覆盖矩阵与分阶段测试指南
 - `HAMI_TEST_GUIDE.zh-CN.md`：HAMi 当前验证状态、vLLM 适配问题和与 Volcano 的边界说明
+- `GPU_SCHEDULING_GUIDE.zh-CN.md`：`Volcano/HAMi` 的节点池、卡池、UUID pin 与调度治理建议
 - `KTHENA_TEST_GUIDE.zh-CN.md`：Kthena 官方能力定位、真实安装记录、已验证链路与当前阻塞点
 - `examples/vm104-vllm-smoke-values.yaml`：`ENV-27` 上验证通过的 vLLM smoke values
 - `examples/vm104-vllm-hami-smoke-values.yaml`：`ENV-27` 上验证通过的 `vLLM + HAMi` smoke values（显式绑定空闲 GPU UUID）
 - `examples/vm104-vllm-hami-pool-values.yaml`：`ENV-27` 上验证通过的 `vLLM + HAMi` 卡池隔离 values（排除 Volcano 卡池）
+- `examples/vm104-vllm-volcano-pool-values.yaml`：`ENV-27` 上 `Volcano` 固定 GPU 池的 values 示例
+- `examples/vllm-hami-nodepool-values.yaml` / `examples/vllm-volcano-nodepool-values.yaml`：多节点环境下的节点池隔离示例
 - `examples/vm104-vllm-volcano-smoke-values.yaml`：`ENV-27` 上验证通过的 vLLM + Volcano smoke values
 - `examples/vm104-vllm-volcano-custom-queue-values.yaml`：`ENV-27` 上验证通过的 vLLM + Volcano custom queue values
 - `examples/vm104-vllm-volcano-auto-pg-values.yaml`：`ENV-27` 上验证通过的 vLLM + Volcano 自动 PodGroup values
